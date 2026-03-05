@@ -1,0 +1,448 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    background-color: #0d0d0d;
+    color: #00ff41;
+    font-family: 'Courier New', Courier, monospace;
+    margin: 0;
+    padding: 10px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden; /* 防止浏览器出现双滚动条 */
+    width: 100vw;
+    height: 100vh;
+}
+
+#game-container {
+    display: grid;
+    grid-template-areas:
+        "header header header"
+        "game-state log control";
+    grid-template-columns: minmax(240px, 280px) 3fr minmax(180px, 220px);
+    grid-template-rows: auto 1fr;
+    gap: 12px;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    align-items: stretch;
+}
+
+header {
+    grid-area: header;
+    border-bottom: 2px solid #00ff41;
+    padding: 10px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+header h1 {
+    margin: 0;
+    font-size: clamp(1.2em, 4vw, 1.8em);
+    flex-shrink: 0;
+}
+
+#status-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    font-size: clamp(0.8em, 2vw, 0.9em);
+}
+
+#status-bar span {
+    margin-left: 20px;
+}
+
+#main-content {
+    grid-area: game-state;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
+}
+
+#apartment-section, #characters-section {
+    background: rgba(0, 255, 65, 0.05);
+    border: 1px solid #00ff41;
+    padding: 12px;
+    border-radius: 5px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1 1 0;
+    min-height: 0;
+}
+
+#apartment-section h2, #characters-section h2 {
+    margin: 0 0 10px 0;
+    font-size: 1.1em;
+}
+
+#rooms-container, #characters-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.room-card, .character-card {
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid #00ff41;
+    padding: 12px;
+    border-radius: 5px;
+    width: 100%;
+}
+
+.room-card h4, .character-card h4 {
+    margin: 0 0 5px 0;
+    color: #00ff41;
+    border-bottom: 1px solid #00ff41;
+    padding-bottom: 5px;
+    font-size: 0.95em;
+}
+
+.room-occupants, .room-items {
+    font-size: 0.9em;
+    color: #999;
+    margin-top: 5px;
+}
+
+.stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 10px 0;
+}
+
+.stat {
+    background: rgba(0, 255, 65, 0.1);
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 0.9em;
+}
+
+#log-section {
+    grid-area: log;
+    background: #000;
+    border: 1px solid #00ff41;
+    padding: 12px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border-radius: 5px;
+    box-shadow: inset 0 0 10px #00ff41;
+    min-height: 0;
+}
+
+#log-section h2 {
+    margin: 0 0 10px 0;
+    font-size: 1.1em;
+}
+
+#game-log {
+    /* 移除固定高度，让内容自然撑开触发父级滚动 */
+}
+
+.log-entry {
+    margin-bottom: 10px;
+    border-left: 2px solid #00ff41;
+    padding-left: 10px;
+    animation: fadeIn 0.5s;
+}
+
+.thought {
+    color: #666;
+    font-style: italic;
+    border-left-color: #444;
+}
+
+.artwork {
+    color: #ff79c6;
+    border-left: 3px solid #ff79c6;
+    background: rgba(255, 121, 198, 0.06);
+    padding: 4px 12px;
+    margin: 2px 0;
+}
+
+.artwork-prompt {
+    color: #8be9fd;
+    border-left: 3px solid #8be9fd;
+    background: rgba(139, 233, 253, 0.04);
+    padding: 3px 12px;
+    margin: 1px 0 6px 0;
+    font-size: 0.87em;
+    opacity: 0.9;
+    white-space: pre-wrap;
+}
+
+.environment {
+    color: #00d4ff;
+    border-left-color: #00d4ff;
+    background: rgba(0, 212, 255, 0.05);
+    padding: 5px 10px;
+}
+
+.npc {
+    color: #bc13fe;
+    border-left-color: #bc13fe;
+    font-weight: bold;
+}
+
+.progress {
+    color: #ffca28;
+    border-left-color: #ffca28;
+}
+
+.progress::after {
+    content: "...";
+    animation: dots 1.5s infinite;
+}
+
+@keyframes dots {
+    0%, 20% { content: "."; }
+    40% { content: ".."; }
+    60%, 100% { content: "..."; }
+}
+
+#info-panel {
+    grid-area: control;
+    background: rgba(0, 255, 65, 0.1);
+    border: 1px solid #00ff41;
+    padding: 12px;
+    border-radius: 5px;
+    overflow-y: auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+#info-panel h3 {
+    margin: 0 0 8px 0;
+    font-size: 1em;
+}
+
+#api-config {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#time-control {
+    margin-top: 20px;
+    display: flex;
+    gap: 5px;
+}
+
+#time-control button {
+    flex: 1;
+    padding: 8px;
+    font-size: 0.9em;
+}
+
+input[type="password"] {
+    background: #000;
+    border: 1px solid #00ff41;
+    color: #00ff41;
+    padding: 8px;
+}
+
+button {
+    background: #00ff41;
+    color: #000;
+    border: none;
+    padding: 10px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #008f11;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* 平板和大屏幕（1200px 以上）：三列布局 */
+@media (min-width: 1200px) {
+    #game-container {
+        grid-template-columns: minmax(240px, 280px) 3fr minmax(180px, 220px);
+    }
+}
+
+/* 中等屏幕（768px - 1199px）：两列布局 */
+@media (max-width: 1199px) {
+    #game-container {
+        grid-template-areas:
+            "header header"
+            "game-state log"
+            "control control";
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto 1fr auto;
+    }
+
+    #info-panel {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    #api-config {
+        flex: 1;
+        min-width: 200px;
+    }
+
+    #time-control {
+        flex: 1;
+        min-width: 200px;
+    }
+}
+
+/* 小屏幕（小于 768px）：单列布局 */
+@media (max-width: 767px) {
+    body {
+        padding: 5px;
+    }
+
+    #game-container {
+        grid-template-areas:
+            "header"
+            "game-state"
+            "log"
+            "control";
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto auto;
+    }
+
+    #main-content {
+        max-height: 50vh;
+    }
+
+    #log-section {
+        max-height: 40vh;
+    }
+
+    #info-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    #time-control {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 5px;
+    }
+}
+
+/* 节假日样式 */
+.holiday-active {
+    color: #ffca28 !important;
+    font-weight: bold;
+    text-shadow: 0 0 5px #ffca28;
+    animation: holidayGlow 2s infinite alternate;
+}
+
+@keyframes holidayGlow {
+    from {
+        text-shadow: 0 0 5px #ffca28;
+    }
+    to {
+        text-shadow: 0 0 10px #ffca28, 0 0 15px #ffca28;
+    }
+}
+
+/* 不同节假日的特定颜色 */
+.holiday-active[data-holiday="春节"],
+.holiday-active[data-holiday="春节假期"] {
+    color: #ff3333 !important;
+    text-shadow: 0 0 5px #ff3333;
+}
+
+.holiday-active[data-holiday="元旦"] {
+    color: #ff6666 !important;
+}
+
+.holiday-active[data-holiday="清明节"] {
+    color: #99cc99 !important;
+}
+
+.holiday-active[data-holiday="劳动节"] {
+    color: #ff9966 !important;
+}
+
+.holiday-active[data-holiday="端午节"] {
+    color: #996633 !important;
+}
+
+.holiday-active[data-holiday="中秋节"] {
+    color: #ffcc00 !important;
+}
+
+.holiday-active[data-holiday="国庆节"] {
+    color: #ff0000 !important;
+}
+
+/* 存档系统样式 */
+#save-slots {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.save-slot {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid #00ff41;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.save-slot span {
+    color: #999;
+}
+
+.save-slot #save-time-1,
+.save-slot #save-time-2,
+.save-slot #save-time-3 {
+    color: #00ff41;
+}
+
+.save-btns {
+    display: flex;
+    gap: 5px;
+}
+
+.save-btns button {
+    flex: 1;
+    padding: 5px;
+    font-size: 0.8em;
+}
+
+.save-btns button:disabled {
+    background: #333;
+    color: #666;
+    cursor: not-allowed;
+}
+
+.save-btns button:last-child {
+    background: #008f11;
+    color: #fff;
+}
+
+.save-btns button:last-child:hover:not(:disabled) {
+    background: #00ff41;
+    color: #000;
+}

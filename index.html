@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 觉醒：无限边境 - 挂机文字冒险</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container">
+        <header>
+            <h1>公寓生活模拟器</h1>
+            <div id="status-bar">
+                <span>游戏时间: <span id="game-time">2025年03月04日 08:00</span></span>
+                <span>现实时间: <span id="real-time">--:--</span></span>
+                <span>时间倍率: <span id="time-multiplier">1x</span></span>
+                <span>节假日: <span id="holiday-info">工作日</span></span>
+            </div>
+        </header>
+
+        <main id="main-content">
+            <section id="apartment-section">
+                <h2>公寓状态</h2>
+                <div id="rooms-container">
+                    <!-- 房间状态将通过JS动态生成 -->
+                </div>
+            </section>
+
+            <section id="characters-section">
+                <h2>角色状态</h2>
+                <div id="characters-container">
+                    <!-- 角色状态将通过JS动态生成 -->
+                </div>
+            </section>
+        </main>
+
+        <section id="log-section">
+            <h2>生活日志</h2>
+            <div id="game-log"></div>
+        </section>
+
+        <aside id="info-panel">
+            <h3>游戏控制</h3>
+            <div id="api-config">
+                <input type="password" id="api-key" placeholder="输入 DeepSeek API Key">
+                <button id="start-btn">开始模拟</button>
+                <button id="pause-btn" disabled>暂停模拟</button>
+            </div>
+            <div id="time-control">
+                <button id="speed-1x">1x</button>
+                <button id="speed-2x">2x</button>
+                <button id="speed-5x">5x</button>
+                <button id="speed-10x">10x</button>
+            </div>
+            <h3>游戏存档</h3>
+            <div id="save-slots">
+                <div class="save-slot">
+                    <span>存档 1: <span id="save-time-1">无</span></span>
+                    <div class="save-btns">
+                        <button id="save-btn-1">保存</button>
+                        <button id="load-btn-1" disabled>读取</button>
+                    </div>
+                </div>
+                <div class="save-slot">
+                    <span>存档 2: <span id="save-time-2">无</span></span>
+                    <div class="save-btns">
+                        <button id="save-btn-2">保存</button>
+                        <button id="load-btn-2" disabled>读取</button>
+                    </div>
+                </div>
+                <div class="save-slot">
+                    <span>存档 3: <span id="save-time-3">无</span></span>
+                    <div class="save-btns">
+                        <button id="save-btn-3">保存</button>
+                        <button id="load-btn-3" disabled>读取</button>
+                    </div>
+                </div>
+            </div>
+            <div id="save-transfer">
+                <button id="export-btn">导出全部存档</button>
+                <button id="import-btn">导入存档文件</button>
+                <input type="file" id="import-input" style="display: none;" accept=".json">
+            </div>
+        </aside>
+    </div>
+    <script src="calendar-plugin.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>
