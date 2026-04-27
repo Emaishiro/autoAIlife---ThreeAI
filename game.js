@@ -1,194 +1,391 @@
 
-const gameState = {
-    // 游戏时间
-    startTime: new Date('2025-03-04T08:00:00'),
-    currentTime: new Date('2025-03-04T08:00:00'),
-    timeMultiplier: 1, // 时间流逝倍率，1为真实时间
-    currentHoliday: null, // 当前节假日信息
-    holidayDescription: '工作日', // 节假日描述
+// ===== 动态配置系统：GAME_CONFIG 和 GAME_PRESETS =====
 
-    // 公寓状态
-    apartment: {
-        rooms: {
-            livingRoom: {
-                name: "客厅",
-                description: "宽敞明亮的客厅，有沙发、电视和茶几。",
-                items: ["沙发", "电视", "茶几", "空调"]
-            },
-            kitchen: {
-                name: "厨房",
-                description: "设备齐全的厨房，有冰箱、灶台和厨具。",
-                items: ["冰箱", "灶台", "微波炉", "电饭煲", "厨具套装"]
-            },
-            bathroom: {
-                name: "卫生间",
-                description: "干净的卫生间，有马桶和洗手台。",
-                items: ["马桶", "洗手台", "镜子", "卫生纸"]
-            },
-            bathRoom: {
-                name: "浴室",
-                description: "独立的浴室，有淋浴设备和热水器。",
-                items: ["淋浴设备", "热水器", "浴巾", "洗漱用品"]
-            },
-            studyRoom: {
-                name: "书房",
-                description: "安静的书房，有书桌、书架和电脑。",
-                items: ["书桌", "书架", "台式电脑", "办公椅"]
-            },
-            bedroom1: {
-                name: "惠舞的卧室",
-                description: "惠舞的卧室，整洁简单，书桌上堆满了专业书籍。",
-                items: ["单人床", "书桌", "衣柜", "台灯"]
-            },
-            bedroom2: {
-                name: "三玖的卧室",
-                description: "三玖的卧室，布置简约，有淡淡的清香。",
-                items: ["单人床", "梳妆台", "衣柜", "小沙发"]
-            },
-            bedroom3: {
-                name: "五月的卧室",
-                description: "五月的卧室，稍微有些杂乱，零食包装袋随处可见。",
-                items: ["单人床", "书桌", "衣柜", "零食箱"]
+// 深度克隆工具函数（用于预设拷贝）
+function deepClone(obj) {
+    if (obj === null || typeof obj !== 'object') return obj;
+    if (obj instanceof Date) return new Date(obj.getTime());
+    if (obj instanceof Array) return obj.map(item => deepClone(item));
+    if (obj instanceof Object) {
+        const cloned = {};
+        for (const key in obj) {
+            if (obj.hasOwnProperty(key)) {
+                cloned[key] = deepClone(obj[key]);
             }
-        },
-        // 公共物品
-        sharedItems: ["Wi-Fi路由器", "洗衣机", "烘干机", "吸尘器"],
-
-        // 房间连接关系（双向）
-        connections: {
-            livingRoom: ["kitchen", "bathroom", "bathRoom", "studyRoom", "bedroom1", "bedroom2", "bedroom3", "outside"],
-            kitchen: ["livingRoom"],
-            bathroom: ["livingRoom"],
-            bathRoom: ["livingRoom"],
-            studyRoom: ["livingRoom"],
-            bedroom1: ["livingRoom"],
-            bedroom2: ["livingRoom"],
-            bedroom3: ["livingRoom"],
-            outside: ["livingRoom"] // 外出只能返回客厅
         }
-    },
+        return cloned;
+    }
+}
 
-    // 角色状态
-    characters: {
-        huiwu: {
+// 主游戏配置对象
+const GAME_CONFIG = {
+    version: "2.0",
+    characters: [
+        {
+            id: "huiwu",  // 保留原ID以维持代码兼容性
             name: "惠舞",
+            color: "#00d4ff",
             gender: "male",
             age: 22,
             personality: "榆木脑袋的顶尖学霸，非常认真负责，会主动找人聊天，空闲时看新闻",
-            mood: 80, // 心情值 0-100
-            energy: 90, // 精力值 0-100
-            satiety: 70, // 饱腹值 0-100（100为完全饱腹，0为极度饥饿）
-            hygiene: 85, // 卫生度 0-100
-            wallet: 5000, // 钱包余额（人民币）
             career: "AI算法工程师",
             monthlyIncome: 15000,
+            careerPrompt: "工作日上午9-12点和下午14-18点为明确工作时段。工作中应该展示专业和认真的态度。",
             skills: ["编程", "数学", "逻辑分析", "阅读"],
-            currentRoom: "livingRoom",
-            currentAction: "无",
-            status: "awake", // 状态：awake（清醒）, unconscious（晕倒）, sleeping（睡眠）
-            // 睡眠系统
-            sleepStartTime: null, // 开始睡眠的游戏时间
-            sleepDuration: 0, // 已睡眠时长（分钟）
-            isSleeping: false, // 是否处于睡眠状态
-            lastDisturbance: null, // 上次被惊醒的时间（用于冷却期）
-            relationship: {
-                sanjiu: 20, // 与三玖的关系值 -100 到 100
-                wuyue: 20  // 与五月的关系值 -100 到 100
+            initialStats: {
+                mood: 80,
+                energy: 90,
+                satiety: 70,
+                hygiene: 85,
+                wallet: 5000
             },
-            // 长期疲劳系统
-            workHoursToday: 0, // 今天累计工作小时数
-            consecutiveWorkDays: 0, // 连续工作天数
-            fatigueLevel: 0, // 疲劳等级 0-100（影响行为和能量消耗）
-            lastRestTime: new Date('2025-03-04T08:00:00'), // 上次休息时间
-            lastWorkCheckTime: new Date('2025-03-04T08:00:00'), // 上次检查工作时间的游戏时刻
-            // 行为连续性系统
-            actionHistory: [], // 最近3次行为简述
-            lastActionType: 'rest', // 上一次行为类型：'work'|'rest'|'eat'|'hygiene'|'social'
+            initialRelationships: {
+                "sanjiu": 20,
+                "wuyue": 20
+            },
+            bedroomId: "bedroom1"
         },
-        sanjiu: {
+        {
+            id: "sanjiu",
             name: "三玖",
+            color: "#ff79c6",
             gender: "female",
             age: 21,
             personality: "沉默寡言，不擅长表达感情，内向但也不介意别人的好意，空闲时看电影，空闲时听歌",
-            mood: 70,
-            energy: 85,
-            satiety: 60,
-            hygiene: 90,
-            wallet: 4000,
             career: "插画师",
             monthlyIncome: 8000,
+            careerPrompt: "创意工作者，工作没有固定时段，主要通过作品输出来体现。",
             skills: ["绘画", "设计", "阅读"],
-            currentRoom: "livingRoom",
-            currentAction: "无",
-            status: "awake", // 状态：awake（清醒）, unconscious（晕倒）, sleeping（睡眠）
-            sleepStartTime: null,
-            sleepDuration: 0,
-            isSleeping: false,
-            lastDisturbance: null,
-            relationship: {
-                huiwu: 20,
-                wuyue: 30
+            initialStats: {
+                mood: 70,
+                energy: 85,
+                satiety: 60,
+                hygiene: 90,
+                wallet: 4000
             },
-            // 长期疲劳系统
-            workHoursToday: 0,
-            consecutiveWorkDays: 0,
-            fatigueLevel: 0,
-            lastRestTime: new Date(),
-            // 行为连续性系统
-            actionHistory: [],
-            lastActionType: 'rest',
+            initialRelationships: {
+                "huiwu": 20,
+                "wuyue": 30
+            },
+            bedroomId: "bedroom2"
         },
-        wuyue: {
+        {
+            id: "wuyue",
             name: "五月",
+            color: "#ffb86c",
             gender: "female",
             age: 21,
             personality: "努力认真，不擅长撒谎，空闲时喜欢吃东西，有当老师的梦想，会主动找人聊天，爱分享趣事，空闲时看时尚杂志",
-            mood: 85,
-            energy: 95,
-            satiety: 40,
-            hygiene: 75,
-            wallet: 3000,
             career: "美食博主",
             monthlyIncome: 10000,
+            careerPrompt: "需要定期产出内容。通常会在厨房进行美食制作或拍摄。",
             skills: ["烹饪", "摄影", "视频编辑"],
+            initialStats: {
+                mood: 85,
+                energy: 95,
+                satiety: 40,
+                hygiene: 75,
+                wallet: 3000
+            },
+            initialRelationships: {
+                "huiwu": 20,
+                "sanjiu": 30
+            },
+            bedroomId: "bedroom3"
+        }
+    ],
+    rooms: [
+        {
+            id: "livingRoom",
+            name: "客厅",
+            description: "宽敞明亮的客厅，有沙发、电视和茶几。",
+            items: ["沙发", "电视", "茶几", "空调"],
+            isHub: true
+        },
+        {
+            id: "kitchen",
+            name: "厨房",
+            description: "设备齐全的厨房，有冰箱、灶台和厨具。",
+            items: ["冰箱", "灶台", "微波炉", "电饭煲", "厨具套装"],
+            isHub: false
+        },
+        {
+            id: "bathroom",
+            name: "卫生间",
+            description: "干净的卫生间，有马桶和洗手台。",
+            items: ["马桶", "洗手台", "镜子", "卫生纸"],
+            isHub: false
+        },
+        {
+            id: "bathRoom",
+            name: "浴室",
+            description: "独立的浴室，有淋浴设备和热水器。",
+            items: ["淋浴设备", "热水器", "浴巾", "洗漱用品"],
+            isHub: false
+        },
+        {
+            id: "studyRoom",
+            name: "书房",
+            description: "安静的书房，有书桌、书架和电脑。",
+            items: ["书桌", "书架", "台式电脑", "办公椅"],
+            isHub: false
+        },
+        {
+            id: "bedroom1",
+            name: "惠舞的卧室",
+            description: "惠舞的卧室，整洁简单，书桌上堆满了专业书籍。",
+            items: ["单人床", "书桌", "衣柜", "台灯"],
+            isBedroom: true,
+            ownerCharId: "huiwu"
+        },
+        {
+            id: "bedroom2",
+            name: "三玖的卧室",
+            description: "三玖的卧室，布置简约，有淡淡的清香。",
+            items: ["单人床", "梳妆台", "衣柜", "小沙发"],
+            isBedroom: true,
+            ownerCharId: "sanjiu"
+        },
+        {
+            id: "bedroom3",
+            name: "五月的卧室",
+            description: "五月的卧室，稍微有些杂乱，零食包装袋随处可见。",
+            items: ["单人床", "书桌", "衣柜", "零食箱"],
+            isBedroom: true,
+            ownerCharId: "wuyue"
+        }
+    ],
+    sharedItems: ["Wi-Fi路由器", "洗衣机", "烘干机", "吸尘器"],
+    startTime: "2025-03-04T08:00:00"
+};
+
+// 游戏预设库
+const GAME_PRESETS = {
+    "default_threegirls": {
+        id: "default_threegirls",
+        label: "默认：惠舞/三玖/五月",
+        description: "三室一厅公寓，三位性格各异的室友",
+        config: deepClone(GAME_CONFIG)
+    },
+    "blank": {
+        id: "blank",
+        label: "空白配置",
+        description: "从零开始自定义角色和房间",
+        config: {
+            version: "2.0",
+            characters: [],
+            rooms: [
+                {
+                    id: "livingRoom",
+                    name: "客厅",
+                    description: "公共生活区",
+                    items: [],
+                    isHub: true
+                }
+            ],
+            sharedItems: [],
+            startTime: "2025-03-04T08:00:00"
+        }
+    }
+};
+
+// 当前活跃配置（游戏运行时使用）
+let activeConfig = deepClone(GAME_PRESETS["default_threegirls"].config);
+
+// ===== 动态初始化函数 =====
+
+// 根据房间配置动态生成房间连接关系
+function buildRoomConnections(rooms) {
+    const connections = {};
+    const hubRooms = rooms.filter(r => r.isHub).map(r => r.id);
+
+    for (const room of rooms) {
+        if (room.isHub) {
+            // Hub房间连接所有其他房间 + outside
+            connections[room.id] = rooms
+                .filter(r => r.id !== room.id)
+                .map(r => r.id)
+                .concat(["outside"]);
+        } else {
+            // 非Hub房间只连接Hub房间
+            connections[room.id] = [...hubRooms];
+        }
+    }
+    connections["outside"] = [...hubRooms];
+    return connections;
+}
+
+// 从 activeConfig 动态初始化 gameState
+function initGameStateFromConfig(config) {
+    // 构建 characters 对象（以 char.id 为键）
+    const characters = {};
+    for (const charConfig of config.characters) {
+        characters[charConfig.id] = {
+            // 从 config 读取的静态属性
+            name: charConfig.name,
+            color: charConfig.color,
+            gender: charConfig.gender,
+            age: charConfig.age,
+            personality: charConfig.personality,
+            career: charConfig.career,
+            monthlyIncome: charConfig.monthlyIncome,
+            careerPrompt: charConfig.careerPrompt,
+            skills: [...charConfig.skills],
+            bedroomId: charConfig.bedroomId,
+
+            // 从 initialStats 读取的可变属性
+            ...deepClone(charConfig.initialStats),
+
+            // 运行时字段（固定初始值）
             currentRoom: "livingRoom",
             currentAction: "无",
-            status: "awake", // 状态：awake（清醒）, unconscious（晕倒）, sleeping（睡眠）
+            status: "awake",
             sleepStartTime: null,
             sleepDuration: 0,
             isSleeping: false,
             lastDisturbance: null,
-            relationship: {
-                huiwu: 20,
-                sanjiu: 30
-            },
-            // 长期疲劳系统
+            targetSleepDuration: null,
             workHoursToday: 0,
             consecutiveWorkDays: 0,
             fatigueLevel: 0,
-            lastRestTime: new Date(),
-            lastWorkCheckTime: new Date('2025-03-04T08:00:00'),
-            // 行为连续性系统
+            lastRestTime: new Date(config.startTime),
+            lastWorkCheckTime: new Date(config.startTime),
             actionHistory: [],
             lastActionType: 'rest',
+            artworks: [],
+
+            // 关系值（克隆 initialRelationships）
+            relationship: deepClone(charConfig.initialRelationships)
+        };
+    }
+
+    // 构建 apartment 对象
+    const rooms = {};
+    for (const roomConfig of config.rooms) {
+        rooms[roomConfig.id] = {
+            name: roomConfig.name,
+            description: roomConfig.description,
+            items: [...roomConfig.items]
+        };
+    }
+
+    const connections = buildRoomConnections(config.rooms);
+
+    return {
+        startTime: new Date(config.startTime),
+        currentTime: new Date(config.startTime),
+        timeMultiplier: 1,
+        currentHoliday: null,
+        holidayDescription: '工作日',
+        apartment: { rooms, sharedItems: [...config.sharedItems], connections },
+        characters,
+        isProcessing: false,
+        isPaused: false,
+        shouldStop: false,
+        loopTimeoutId: null,
+        actionTimeoutId: null,
+        actionResolve: null,
+        apiKey: "",
+        lastArtworkPromptTime: 0,
+        lastActionTime: null,
+        dayCount: 1,
+        dailyInteractions: [],
+        recentEvents: []   // 近几轮关键事件，供下轮 prompt 使用
+    };
+}
+
+// 使用 activeConfig 初始化 gameState
+let gameState = initGameStateFromConfig(activeConfig);
+
+// ===== 动态颜色系统（阶段3）=====
+
+// 应用角色颜色 - 每次gameState的角色改变时调用
+function applyCharacterColors() {
+    const style = document.getElementById('dynamic-char-styles')
+        || (() => {
+            const s = document.createElement('style');
+            s.id = 'dynamic-char-styles';
+            document.head.appendChild(s);
+            return s;
+        })();
+
+    let css = '';
+    for (const [charId, char] of Object.entries(gameState.characters)) {
+        // 使用 data-color-id 属性而非CSS类来存储颜色
+        css += `.log-entry[data-color-id="${charId}"] { color: ${char.color}; border-left-color: ${char.color}; }\n`;
+        // 也支持CSS类作为备用
+        css += `.character-${charId} { color: ${char.color}; border-left-color: ${char.color}; }\n`;
+    }
+    style.textContent = css;
+}
+
+// 动态构建角色颜色映射（名字 -> ID）
+
+// ===== 技能学习系统（阶段5）=====
+
+// 处理技能变化 - 接受角色对象
+function applySkillChanges(charOrName, skillChanges) {
+    if (!skillChanges) return;
+
+    // 兼容两种输入：角色对象或角色名字
+    let char;
+    if (typeof charOrName === 'string') {
+        char = getCharacterByName(charOrName);
+    } else {
+        char = charOrName;
+    }
+
+    if (!char) return;
+
+    // 获取角色ID（用于更新activeConfig）
+    let charId = null;
+    for (const [id, c] of Object.entries(gameState.characters)) {
+        if (c === char) {
+            charId = id;
+            break;
         }
-    },
+    }
 
-    // 游戏控制状态
-    isProcessing: false,
-    isPaused: false,
-    shouldStop: false,
-    loopTimeoutId: null,
-    actionTimeoutId: null,
-    actionResolve: null,
-    apiKey: "",
-    lastArtworkPromptTime: 0,  // 防止短时间内重复触发文生图生成
+    // 处理学习的技能
+    if (skillChanges.learn && Array.isArray(skillChanges.learn)) {
+        for (const skill of skillChanges.learn) {
+            if (!char.skills.includes(skill)) {
+                char.skills.push(skill);
+                addLog(`${char.name} 学会了新技能：【${skill}】`, 'system', char.name);
 
-    // 游戏事件记录
-    lastActionTime: null,
-    dayCount: 1,
-    dailyInteractions: [] // 当天互动记录，用于夜晚关系结算
-};
+                // 同步更新 activeConfig
+                if (charId) {
+                    const charConfig = activeConfig.characters.find(c => c.id === charId);
+                    if (charConfig && !charConfig.skills.includes(skill)) {
+                        charConfig.skills.push(skill);
+                    }
+                }
+            }
+        }
+    }
+
+    // 处理遗忘的技能
+    if (skillChanges.forget && Array.isArray(skillChanges.forget)) {
+        for (const skill of skillChanges.forget) {
+            const idx = char.skills.indexOf(skill);
+            if (idx >= 0) {
+                char.skills.splice(idx, 1);
+                addLog(`${char.name} 遗忘了技能：【${skill}】`, 'system', char.name);
+
+                // 同步更新 activeConfig
+                if (charId) {
+                    const charConfig = activeConfig.characters.find(c => c.id === charId);
+                    if (charConfig) {
+                        const cfgIdx = charConfig.skills.indexOf(skill);
+                        if (cfgIdx >= 0) charConfig.skills.splice(cfgIdx, 1);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ===== 配置系统第一阶段已完成 =====
 
 // 初始化节假日信息
 const initialHolidayInfo = CalendarPlugin.isHoliday(gameState.currentTime);
@@ -344,7 +541,7 @@ function updateCharactersUI() {
                 <span class="stat">精力: ${char.energy}</span>
                 <span class="stat">饱腹: ${char.satiety}</span>
                 <span class="stat">卫生: ${char.hygiene}</span>
-                <span class="stat ${char.status === 'unconscious' ? 'stat-warning' : ''}">状态: ${char.status === 'unconscious' ? '晕倒中' : '清醒'}</span>
+                <span class="stat ${char.status === 'unconscious' ? 'stat-warning' : ''}">状态: ${(char.isSleeping || char.status === 'sleeping') ? '睡眠中' : (char.status === 'unconscious' ? '晕倒中' : '清醒')}</span>
             </div>
             <p>钱包: ¥${char.wallet}</p>
             <p>当前位置: ${char.currentRoom === 'outside' ? '外出' : (gameState.apartment.rooms[char.currentRoom]?.name || '未知')}</p>
@@ -368,20 +565,83 @@ function getRoomOccupants(roomId) {
     return occupants;
 }
 
+// 角色颜色映射
+const characterColors = {
+    '惠舞': 'huiwu',
+    '三玖': 'sanjiu',
+    '五月': 'wuyue'
+};
+
+// 从消息中提取第一个角色名称
+function extractCharacterName(message) {
+    // 首先从 gameState 中动态查找角色
+    if (gameState && gameState.characters) {
+        for (const charId in gameState.characters) {
+            const char = gameState.characters[charId];
+            if (char.name && message.includes(char.name)) {
+                return char.name;
+            }
+        }
+    }
+
+    // 备用：使用硬编码的角色名（用于兼容）
+    for (const charName of Object.keys(characterColors)) {
+        if (message.includes(charName)) {
+            return charName;
+        }
+    }
+    return null;
+}
+
+// 通过角色名查找角色ID
+function findCharacterIdByName(charName) {
+    if (!charName || !gameState || !gameState.characters) return null;
+
+    for (const charId in gameState.characters) {
+        if (gameState.characters[charId].name === charName) {
+            return charId;
+        }
+    }
+    return null;
+}
+
 // 打印日志
-function addLog(message, type = 'info') {
+function addLog(message, type = 'info', characterName = null) {
     const entry = document.createElement('div');
-    entry.className = `log-entry ${type}`;
+
+    // 确定CSS类名
+    let classes = `log-entry`;
+
+    // 从消息中检测角色名（如果没有提供的话）
+    const charName = characterName || extractCharacterName(message);
+
+    // 仅当需要特定的非角色颜色时才使用type
+    const specialTypes = ['thought', 'result', 'warning', 'error', 'system', 'interaction', 'progress', 'environment', 'artwork', 'artwork-prompt', 'narrative'];
+
+    if (specialTypes.includes(type)) {
+        // 这些类型有自己的特殊颜色
+        classes += ` ${type}`;
+    } else if (charName) {
+        // 动态查找角色ID，通过 charName 匹配角色
+        const charId = findCharacterIdByName(charName);
+        if (charId) {
+            // 使用 data-color-id 属性将日志条目与角色ID关联
+            // 这样当颜色更新时，CSS 会自动应用
+            entry.setAttribute('data-color-id', charId);
+        }
+    }
+
+    entry.className = classes;
 
     // 使用游戏时间而不是现实时间
     const gameTime = gameState.currentTime;
     const timeStr = formatGameTime(gameTime);
 
     entry.innerText = `[${timeStr}] ${message}`;
-    ui.gameLog.appendChild(entry); // 改为 appendChild 配合滚动
+    ui.gameLog.appendChild(entry);
 
     // 限制日志数量
-    if (ui.gameLog.children.length > 50) {
+    if (ui.gameLog.children.length > 150) {
         ui.gameLog.removeChild(ui.gameLog.firstChild);
     }
 
@@ -433,11 +693,112 @@ function getPronoun(gender) {
 
 // ==================== 动态恢复action生成系统 ====================
 
-// 根据角色性格和状态生成个性化恢复action
-function generateRestAction(character, otherCharacters) {
+// 根据角色性格和状态生成个性化恢复action（有API Key时调用AI，否则用静态备用池）
+async function generateRestAction(character, otherCharacters) {
+    if (gameState.apiKey) {
+        try {
+            return await generateRestActionWithAI(character, otherCharacters);
+        } catch (error) {
+            console.warn(`[恢复action] AI生成失败，已跳过: ${error.message}`);
+            return null;
+        }
+    }
+    return generateRestActionFromPool(character, otherCharacters);
+}
+
+// 调用 DeepSeek AI 为角色动态生成个性化恢复action
+async function generateRestActionWithAI(character, otherCharacters) {
+    const fatigueLevel = character.fatigueLevel || 0;
+    const effortConstraint = fatigueLevel > 70
+        ? 'minimal（极度疲劳，只能做最轻松被动的事，如躺着听音乐、发呆、闭眼休息）'
+        : fatigueLevel > 40
+            ? 'low（中度疲劳，适度放松，如看视频、看书、喝热饮）'
+            : 'low或medium（轻度疲劳，可以做稍微有趣的事，如玩游戏、做手工、整理物品）';
+
+    const otherCharsInfo = otherCharacters
+        .filter(c => c.name !== character.name)
+        .map(c => `- ${c.name}：${c.status === 'sleeping' ? '睡眠中' : c.status === 'unconscious' ? '晕倒中' : '清醒'}`)
+        .join('\n');
+
+    const hour = gameState.currentTime.getHours();
+    const timeDesc = hour >= 5 && hour < 12 ? '上午' : hour >= 12 && hour < 17 ? '下午' : hour >= 17 && hour < 21 ? '晚上' : '深夜';
+
+    const prompt = `你正在为一个生活模拟游戏生成角色的恢复休息行为，需要高度个性化，体现该角色独特的内心世界。
+
+角色信息：
+- 姓名：${character.name}
+- 性格：${character.personality}
+- 职业：${character.career}
+- 当前精力：${character.energy}/100
+- 当前心情：${character.mood}/100
+- 疲劳等级：${fatigueLevel}/100
+- 当前时间：${timeDesc}${hour}点
+
+其他室友状态：
+${otherCharsInfo || '（无）'}
+
+生成要求：
+1. thought要真实体现该角色的内心独白，不能套话（20-50字）
+2. action要具体生动，有细节感，符合角色的日常习惯和性格（30-60字）
+3. result要自然，体现恢复效果（20-40字）
+4. effort级别：${effortConstraint}
+5. stat_changes中energy和mood必须为正整数（恢复精力和心情）
+6. duration为10-30之间的整数（分钟）
+7. invitable：如果这个休息方式适合邀请他人一起，设为true，否则false
+8. 若行为含吃东西，食物必须具体且多样
+
+严格返回JSON格式，不要有任何额外文字：
+{"thought":"...","action":"...","result":"...","duration":数字,"stat_changes":{"mood":数字,"energy":数字,"satiety":数字,"hygiene":数字,"wallet":数字},"effort":"minimal/low/medium","invitable":true或false}`;
+
+    const result = await callDeepseekAPI(
+        [{ role: 'user', content: prompt }],
+        true,
+        500
+    );
+
+    if (!result.thought || !result.action || !result.result) {
+        throw new Error('AI返回字段不完整');
+    }
+
+    // 保证恢复类数值合理
+    const sc = result.stat_changes || {};
+    if (!sc.energy || sc.energy <= 0) sc.energy = 15;
+    if (!sc.mood || sc.mood <= 0) sc.mood = 10;
+
+    // 处理邀请逻辑
+    let interaction_with = null;
+    if (result.invitable && Math.random() < 0.5) {
+        const awakeOthers = otherCharacters.filter(c =>
+            c.status === 'awake' && c.name !== character.name && Math.random() < 0.4
+        );
+        if (awakeOthers.length > 0) {
+            interaction_with = awakeOthers.map(c => c.name).join('、');
+        }
+    }
+
+    return {
+        character: character.name,
+        thought: result.thought,
+        action: result.action,
+        result: result.result,
+        duration: result.duration || 15,
+        stat_changes: {
+            mood: sc.mood ?? 10,
+            energy: sc.energy ?? 15,
+            satiety: sc.satiety ?? -1,
+            hygiene: sc.hygiene ?? 0,
+            wallet: sc.wallet ?? 0
+        },
+        interaction_with,
+        new_room: character.currentRoom
+    };
+}
+
+// 静态备用池（无API Key或AI调用失败时使用）
+function generateRestActionFromPool(character, otherCharacters) {
     const restActions = {
-        huiwu: [
-            { // 玩游戏
+        '惠舞': [
+            {
                 thought: "脑子有些过载了，强行继续只会写出更烂的代码。玩个游戏让手指替代大脑，暂时放松一下。",
                 action: "靠在书房椅背上，打开平板上收藏的像素风格游戏，手指在屏幕上飞快移动，嘴里轻声嘟囔着攻略",
                 result: "打过了卡了很久的关，肩膀瞬间松弛下来，感觉整个人都重新有了活力",
@@ -445,7 +806,7 @@ function generateRestAction(character, otherCharacters) {
                 stat_changes: { mood: 12, energy: 22, satiety: -2, hygiene: 0, wallet: 0 },
                 effort: 'medium'
             },
-            { // 看新闻
+            {
                 thought: "盯屏幕太久了，眼睛需要休息。看点新闻，让脑子在信息的碎片里放松，这样反而能重新整理思路。",
                 action: "推开书房的门，在客厅沙发上坐下，打开新闻客户端，边喝水边浏览科技新闻",
                 result: "一条关于新型芯片的报道重新激发了灵感，他若有所思地掏出手机记了几个关键词",
@@ -454,7 +815,7 @@ function generateRestAction(character, otherCharacters) {
                 invitable: true,
                 effort: 'low'
             },
-            { // 独自思考
+            {
                 thought: "需要让脑子彻底放空，什么都别想，只是坐着、呼吸、感受当下的安静。",
                 action: "走到窗边，靠着墙静静地站着，目光飘向远方的城市轮廓，脑子里一片平静",
                 result: "十分钟后，整个人都放松了下来，精神状态明显好转",
@@ -463,8 +824,8 @@ function generateRestAction(character, otherCharacters) {
                 effort: 'minimal'
             }
         ],
-        sanjiu: [
-            { // 看电影
+        '三玖': [
+            {
                 thought: "眼睛太累了，不适合再看画册。看部喜欢的电影，让画面和音乐把自己包裹起来，忘记疲劳。",
                 action: "回到卧室，拉上窗帘，打开笔记本，选了一部很久没看的老电影，蜷在被子里看起来",
                 result: "两小时后，当片尾曲响起，她感觉心里被治愈了，疲劳也随之消散",
@@ -473,7 +834,7 @@ function generateRestAction(character, otherCharacters) {
                 invitable: true,
                 effort: 'low'
             },
-            { // 听音乐冥想
+            {
                 thought: "不想做任何事，只想让音乐流淌过整个身体，让身心都慢下来。",
                 action: "戴上耳机，躺到床上，闭上眼睛，让钢琴曲轻轻地包围自己，呼吸也跟着旋律放缓",
                 result: "音乐结束时，她已经完全放松，整个人像被重新启动了一遍",
@@ -481,7 +842,7 @@ function generateRestAction(character, otherCharacters) {
                 stat_changes: { mood: 12, energy: 19, satiety: 0, hygiene: 0, wallet: 0 },
                 effort: 'minimal'
             },
-            { // 用笔画一些涂鸦
+            {
                 thought: "不想画大作品，只想让手动一动，画些无意义的涂鸦，让手脑放空。",
                 action: "坐到窗边，拿出速写本，笔尖在纸上随意游走，画些线条、点点、简单的图案",
                 result: "不知不觉画了一整页，看着这些无意义却很治愈的涂鸦，心情明显好转",
@@ -490,8 +851,8 @@ function generateRestAction(character, otherCharacters) {
                 effort: 'medium'
             }
         ],
-        wuyue: [
-            { // 看杂志+零食
+        '五月': [
+            {
                 thought: "需要舒服地坐着，翻翻时尚杂志，吃点喜欢的零食，这是最简单有效的放松方式。",
                 action: "窝进客厅的懒人沙发，翻出收藏的时尚杂志，咔嚓咔嚓地吃着坚果和蜜饯",
                 result: "一个小时后，杂志翻完了，零食也吃完了，整个人神清气爽",
@@ -499,7 +860,7 @@ function generateRestAction(character, otherCharacters) {
                 stat_changes: { mood: 14, energy: 21, satiety: 12, hygiene: -1, wallet: -15 },
                 effort: 'minimal'
             },
-            { // 逛街（虚拟）+ 逛超市
+            {
                 thought: "想象自己在商场里走一走，看看衣服、鞋子、各种新鲜的东西，这样能让心情飞扬起来。",
                 action: "打开购物app，浏览最新款的衣服和包包，时不时加入购物车，嘴里还在哼着歌",
                 result: "看到一件满意的衣服，果断下单，那种买东西的快乐感顿时驱散了所有疲劳",
@@ -507,7 +868,7 @@ function generateRestAction(character, otherCharacters) {
                 stat_changes: { mood: 16, energy: 19, satiety: -2, hygiene: 0, wallet: -80 },
                 effort: 'low'
             },
-            { // 做简单的点心
+            {
                 thought: "需要用手做点东西，简单的、能立刻吃的东西。这样既能放松又能收获成就感。",
                 action: "走进厨房，简单地打发几个蛋白做蛋白糖，或者烤点饼干，厨房里很快弥漫起甜蜜的香气",
                 result: "二十分钟后，热乎的点心出炉了，咬一个还温热的蛋白糖，所有疲劳都烟消云散",
@@ -519,35 +880,25 @@ function generateRestAction(character, otherCharacters) {
         ]
     };
 
-    // 基于疲劳等级选择恢复action
     const actions = restActions[character.name] || [];
     if (actions.length === 0) return null;
 
-    // 高疲劳时优先选择低努力的恢复方式
-    let selectedAction;
     const fatigueLevel = character.fatigueLevel || 0;
+    let selectedAction;
     if (fatigueLevel > 70) {
-        // 极度疲劳：只选择minimal或low effort的action
         const easyActions = actions.filter(a => a.effort === 'minimal' || a.effort === 'low');
-        if (easyActions.length > 0) {
-            selectedAction = easyActions[Math.floor(Math.random() * easyActions.length)];
-        } else {
-            selectedAction = actions[Math.floor(Math.random() * actions.length)];
-        }
+        selectedAction = easyActions.length > 0
+            ? easyActions[Math.floor(Math.random() * easyActions.length)]
+            : actions[Math.floor(Math.random() * actions.length)];
     } else if (fatigueLevel > 40) {
-        // 中度疲劳：倾向选择low或minimal effort的action
         const preferredActions = actions.filter(a => a.effort !== 'medium');
-        if (preferredActions.length > 0 && Math.random() < 0.7) {
-            selectedAction = preferredActions[Math.floor(Math.random() * preferredActions.length)];
-        } else {
-            selectedAction = actions[Math.floor(Math.random() * actions.length)];
-        }
+        selectedAction = (preferredActions.length > 0 && Math.random() < 0.7)
+            ? preferredActions[Math.floor(Math.random() * preferredActions.length)]
+            : actions[Math.floor(Math.random() * actions.length)];
     } else {
-        // 低疲劳：任意选择
         selectedAction = actions[Math.floor(Math.random() * actions.length)];
     }
 
-    // 如果这个action可邀请，并且有其他清醒的角色，50%概率邀请
     let interaction_with = null;
     if (selectedAction.invitable && Math.random() < 0.5) {
         const awakeOthers = otherCharacters.filter(c =>
@@ -565,7 +916,7 @@ function generateRestAction(character, otherCharacters) {
         result: selectedAction.result,
         duration: selectedAction.duration,
         stat_changes: { ...selectedAction.stat_changes },
-        interaction_with: interaction_with,
+        interaction_with,
         new_room: character.currentRoom
     };
 }
@@ -573,47 +924,259 @@ function generateRestAction(character, otherCharacters) {
 // 共享的 API 配置常量
 const API_CONFIG = {
     ENDPOINT: 'https://api.deepseek.com/chat/completions',
-    MODEL: 'deepseek-chat',
-    METHOD: 'POST'
+    MODEL: 'deepseek-v4-flash',
+    METHOD: 'POST',
+    THINKING: true,
+    THINKING_STYLE: 'default' // 'default' | 'inner_os' | 'no_inner_os'
 };
 
-// 清理并解析 JSON 响应（处理 markdown 包装）
-function cleanAndParseJSON(rawContent) {
-    try {
-        // 第一步：去掉两端空白
-        let cleaned = rawContent.trim();
+// DeepSeek V4 思维链风格指令 Marker
+const INNER_OS_MARKER = "\n\n【角色沉浸要求】在你的思考过程（<think>标签内）中，请遵守以下规则：\n" +
+    "1. 请以角色第一人称进行内心独白，用括号包裹内心活动，例如\"（心想：……）\"或\"(内心OS：……)\"\n" +
+    "2. 用第一人称描写角色的内心感受，例如\"我心想\"\"我觉得\"\"我暗自\"等\n" +
+    "3. 思考内容应沉浸在角色中，通过内心独白分析剧情和规划回复";
 
-        // 第二步：处理 markdown 代码块包装
-        // 匹配 ```json...``` 或 ```...```
-        if (cleaned.startsWith('```')) {
-            // 去掉开头的 ```json 或 ```
-            cleaned = cleaned.replace(/^```(?:json)?\s*\n/, '');
-            // 去掉结尾的 ```
-            cleaned = cleaned.replace(/\n?```\s*$/, '');
+const NO_INNER_OS_MARKER = "\n\n【思维模式要求】在你的思考过程（<think>标签内）中，请遵守以下规则：\n" +
+    "1. 禁止使用圆括号包裹内心独白，例如\"（心想：……）\"或\"(内心OS：……)\"，所有分析内容直接陈述即可\n" +
+    "2. 禁止以角色第一人称描写内心活动，例如\"我心想\"\"我觉得\"\"我暗自\"等，请用分析性语言替代\n" +
+    "3. 思考内容应聚焦于剧情走向分析和回复内容规划，不要在思考中进行角色扮演式的内心戏表演";
+
+// 逐字符修复 JSON：转义字符串内未转义引号/控制字符，并补全被截断的结构
+function repairJSONStrings(str) {
+    let result = '';
+    let i = 0;
+    const len = str.length;
+    const stack = []; // 跟踪未闭合的 { 和 [
+
+    while (i < len) {
+        const ch = str[i];
+
+        if (ch !== '"') {
+            // 在字符串外跟踪括号层级
+            if (ch === '{' || ch === '[') stack.push(ch);
+            else if (ch === '}' || ch === ']') stack.pop();
+            result += ch;
+            i++;
+            continue;
         }
 
-        // 第三步：再次清理空白
-        cleaned = cleaned.trim();
+        // 进入 JSON 字符串
+        result += '"';
+        i++;
+        let closed = false;
 
-        // 第四步：尝试解析
+        while (i < len) {
+            const c = str[i];
+
+            if (c === '\\') {
+                result += c;
+                i++;
+                if (i < len) { result += str[i]; i++; }
+                continue;
+            }
+
+            if (c === '"') {
+                // 向前看紧跟的非空白字符，判断是否为合法字符串结尾
+                let j = i + 1;
+                while (j < len && /\s/.test(str[j])) j++;
+                const next = j < len ? str[j] : '';
+                if (next === ':' || next === ',' || next === '}' || next === ']' || j >= len) {
+                    result += '"';
+                    i++;
+                    closed = true;
+                    break;
+                } else {
+                    // 字符串内部的未转义引号
+                    result += '\\"';
+                    i++;
+                    continue;
+                }
+            }
+
+            // 控制字符转义
+            if (c === '\n') { result += '\\n'; i++; continue; }
+            if (c === '\r') { result += '\\r'; i++; continue; }
+            if (c === '\t') { result += '\\t'; i++; continue; }
+
+            result += c;
+            i++;
+        }
+
+        // 字符串被截断（到达输入末尾仍未闭合）
+        if (!closed) result += '"';
+    }
+
+    // 补全截断导致的未闭合括号（倒序关闭）
+    for (let k = stack.length - 1; k >= 0; k--) {
+        result += stack[k] === '{' ? '}' : ']';
+    }
+
+    return result;
+}
+
+// 清理并解析 JSON 响应（处理 markdown 包装及前后杂文）
+function cleanAndParseJSON(rawContent) {
+    let cleaned = rawContent.trim();
+
+    // 处理 markdown 代码块包装
+    if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replace(/^```(?:json)?\s*\n/, '');
+        cleaned = cleaned.replace(/\n?```\s*$/, '');
+        cleaned = cleaned.trim();
+    }
+
+    // 去掉 JSON 不合法的正数 + 号，如 +12 → 12
+    cleaned = cleaned.replace(/:\s*\+(\d)/g, ': $1');
+
+    // 去掉尾随逗号，如 "value", } 或 "value", ]
+    cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
+
+    // 尝试直接解析
+    try {
         return JSON.parse(cleaned);
-    } catch (parseError) {
-        // 提供详细的调试信息
-        console.error('JSON解析失败:', {
-            error: parseError.message,
-            position: parseError.message.match(/position (\d+)/)?.[1],
-            line: parseError.message.match(/line (\d+)/)?.[1],
-            column: parseError.message.match(/column (\d+)/)?.[1],
+    } catch (e) {
+        // 修复未转义引号和控制字符后重试
+        try {
+            return JSON.parse(repairJSONStrings(cleaned));
+        } catch (e2) { /* 继续下面的修复策略 */ }
+
+        // 检查是否是未终止的字符串错误
+        if (e.message.includes('Unterminated string')) {
+            const start = cleaned.indexOf('{');
+            const end = cleaned.lastIndexOf('}');
+            if (start !== -1 && end > start) {
+                let partial = cleaned.slice(start, end + 1);
+
+                // 更激进的修复策略：如果检测到被截断的字符串，直接移除它
+                // 找到最后一个完整的双引号对
+                let lastValidEnd = -1;
+                let inString = false;
+                let escaped = false;
+
+                for (let i = 0; i < partial.length; i++) {
+                    if (escaped) {
+                        escaped = false;
+                        continue;
+                    }
+                    if (partial[i] === '\\') {
+                        escaped = true;
+                        continue;
+                    }
+                    if (partial[i] === '"') {
+                        inString = !inString;
+                        if (!inString) {
+                            lastValidEnd = i;
+                        }
+                    }
+                }
+
+                // 如果最后还在字符串中（即被截断了），从最后完整的字符串结束位置重建JSON
+                if (inString && lastValidEnd !== -1) {
+                    // 从最后一个完整的字符串结束位置向前找，找到它所属的键值对
+                    // 简单策略：找到最后一个逗号后的冒号，然后截断到那里
+                    const beforeUnfinished = partial.substring(0, lastValidEnd + 1);
+
+                    // 找最后一个逗号
+                    const lastComma = beforeUnfinished.lastIndexOf(',');
+                    if (lastComma !== -1) {
+                        // 截断到最后一个逗号，然后加上 }
+                        partial = beforeUnfinished.substring(0, lastComma) + '}';
+                    } else {
+                        // 没有逗号，说明这是第一个字段，直接加 }
+                        partial = beforeUnfinished + '}';
+                    }
+                }
+
+                try {
+                    return JSON.parse(partial);
+                } catch (e2) { /* 继续到兜底方案 */ }
+            }
+        }
+
+        // 兜底：从文本中提取第一个完整 JSON 对象（适用于 reasoner 前后带杂文的情况）
+        const start = cleaned.indexOf('{');
+        const end = cleaned.lastIndexOf('}');
+        if (start !== -1 && end > start) {
+            try {
+                return JSON.parse(cleaned.slice(start, end + 1));
+            } catch (e2) { /* 继续抛出原始错误 */ }
+        }
+
+        // 详细的错误日志
+        const errorDetails = {
+            error: e.message,
+            position: e.message.match(/position (\d+)/) ? RegExp.$1 : 'unknown',
             rawLength: rawContent.length,
-            cleanedLength: cleaned?.length,
-            first200: rawContent.substring(0, 200),
-            errorContext: rawContent.substring(Math.max(0, 2337-200), Math.min(rawContent.length, 2337+200))
-        });
-        throw parseError;
+            cleanedLength: cleaned.length,
+            first300: cleaned.substring(0, 300),
+            problemArea: e.message.includes('position') ? cleaned.substring(Math.max(0, parseInt(RegExp.$1) - 50), parseInt(RegExp.$1) + 50) : 'N/A'
+        };
+
+        console.error('❌ JSON解析失败详情:', errorDetails);
+        addLog(`JSON解析失败: ${e.message} 位置: ${errorDetails.position}`, 'error');
+        addLog(`响应开始: ${errorDetails.first300}...`, 'debug');
+
+        throw e;
     }
 }
 
 // 获取 DeepSeek API headers
+// 更新API Key状态显示
+function updateApiKeyStatus() {
+    const statusEl = document.getElementById('api-key-status');
+    if (statusEl) {
+        if (gameState.apiKey) {
+            statusEl.style.display = 'inline';
+            statusEl.textContent = '✓ API Key已设置';
+            statusEl.style.color = '#00ff41';
+        } else {
+            statusEl.style.display = 'none';
+        }
+    }
+}
+
+function initModelToggle() {
+    const v4Btn = document.getElementById('model-v4-btn');
+    const v4ProBtn = document.getElementById('model-v4pro-btn');
+    const label = document.getElementById('model-label');
+    if (!v4Btn) return;
+
+    const allBtns = [v4Btn, v4ProBtn].filter(Boolean);
+
+    const thinkingDefaultBtn = document.getElementById('thinking-default-btn');
+    const thinkingInnerBtn = document.getElementById('thinking-inner-btn');
+    const thinkingAnalysisBtn = document.getElementById('thinking-analysis-btn');
+    const allStyleBtns = [thinkingDefaultBtn, thinkingInnerBtn, thinkingAnalysisBtn].filter(Boolean);
+
+    function setThinkingStyle(style, activeBtn) {
+        API_CONFIG.THINKING_STYLE = style;
+        allStyleBtns.forEach(b => b.classList.remove('active'));
+        if (activeBtn) activeBtn.classList.add('active');
+    }
+
+    if (thinkingDefaultBtn) thinkingDefaultBtn.addEventListener('click', () => setThinkingStyle('default', thinkingDefaultBtn));
+    if (thinkingInnerBtn) thinkingInnerBtn.addEventListener('click', () => setThinkingStyle('inner_os', thinkingInnerBtn));
+    if (thinkingAnalysisBtn) thinkingAnalysisBtn.addEventListener('click', () => setThinkingStyle('no_inner_os', thinkingAnalysisBtn));
+
+    v4Btn.addEventListener('click', () => {
+        API_CONFIG.MODEL = 'deepseek-v4-flash';
+        API_CONFIG.THINKING = true;
+        allBtns.forEach(b => b.classList.remove('active'));
+        v4Btn.classList.add('active');
+        label.textContent = '新模型·思考模式';
+    });
+
+    if (v4ProBtn) {
+        v4ProBtn.addEventListener('click', () => {
+            API_CONFIG.MODEL = 'deepseek-v4-pro';
+            API_CONFIG.THINKING = true;
+            allBtns.forEach(b => b.classList.remove('active'));
+            v4ProBtn.classList.add('active');
+            label.textContent = '旗舰模型·思考模式';
+        });
+    }
+}
+
 function getDeepseekHeaders() {
     return {
         'Content-Type': 'application/json',
@@ -621,19 +1184,75 @@ function getDeepseekHeaders() {
     };
 }
 
+function normalizeApiTextContent(content) {
+    if (typeof content === 'string') {
+        const trimmed = content.trim();
+        return trimmed || null;
+    }
+
+    if (Array.isArray(content)) {
+        const merged = content.map(part => {
+            if (typeof part === 'string') return part;
+            if (!part || typeof part !== 'object') return '';
+            if (typeof part.text === 'string') return part.text;
+            if (typeof part.content === 'string') return part.content;
+            if (typeof part.value === 'string') return part.value;
+            return '';
+        }).filter(Boolean).join('\n').trim();
+        return merged || null;
+    }
+
+    if (content && typeof content === 'object') {
+        if (typeof content.text === 'string') {
+            const trimmed = content.text.trim();
+            return trimmed || null;
+        }
+        if (typeof content.content === 'string') {
+            const trimmed = content.content.trim();
+            return trimmed || null;
+        }
+    }
+
+    return null;
+}
+
+function extractDeepseekResponseContent(data) {
+    const choice = data?.choices?.[0];
+    const message = choice?.message || {};
+
+    if (message.parsed && typeof message.parsed === 'object') {
+        return message.parsed;
+    }
+
+    return normalizeApiTextContent(message.content)
+        || normalizeApiTextContent(choice?.text)
+        || normalizeApiTextContent(data?.output_text);
+}
+
 // 调用 DeepSeek API 的通用函数
 async function callDeepseekAPI(messages, useJsonFormat = true, maxTokens = 2000) {
+    const isThinking = API_CONFIG.THINKING;
     const requestBody = {
         model: API_CONFIG.MODEL,
         messages: messages,
-        temperature: 0.7,
-        max_tokens: maxTokens
+        max_tokens: Math.min(isThinking ? Math.max(maxTokens, 8000) : maxTokens, 8192)
     };
 
-    if (useJsonFormat) {
+    if (!isThinking) {
+        requestBody.temperature = 0.7;
+    }
+
+    // v4-flash 开启思考模式时传入 thinking 参数
+    if (isThinking) {
+        requestBody.thinking = { type: 'enabled' };
+    }
+
+    // 思考模式不支持 json_object 格式，需靠 prompt 引导
+    if (useJsonFormat && !isThinking) {
         requestBody.response_format = { type: 'json_object' };
     }
 
+    console.log('[DeepSeek 发送请求]', requestBody);
     const response = await fetch(API_CONFIG.ENDPOINT, {
         method: API_CONFIG.METHOD,
         headers: getDeepseekHeaders(),
@@ -641,19 +1260,32 @@ async function callDeepseekAPI(messages, useJsonFormat = true, maxTokens = 2000)
     });
 
     if (!response.ok) {
-        throw new Error(`API错误: ${response.status}`);
+        let detail = '';
+        try {
+            const errBody = await response.json();
+            detail = errBody.error?.message || errBody.message || JSON.stringify(errBody);
+        } catch (_) {}
+        throw new Error(`API错误: ${response.status}${detail ? ' — ' + detail : ''}`);
     }
 
     const data = await response.json();
-    const content = data.choices[0].message.content;
+    console.log('[DeepSeek 原始响应]', data.choices?.[0]?.message || data);
+    const extractedContent = extractDeepseekResponseContent(data);
+
+    if (extractedContent && typeof extractedContent === 'object') {
+        return extractedContent;
+    }
+
+    const content = extractedContent || '';
 
     // 检查是否为空
     if (!content || content.trim().length === 0) {
+        console.error('❌ DeepSeek 响应缺少可解析内容:', data);
         throw new Error('API返回空内容');
     }
 
     // 检查finish_reason是否为"length"（表示被截断）
-    if (data.choices[0].finish_reason === 'length') {
+    if (data.choices?.[0]?.finish_reason === 'length') {
         console.warn('警告: API响应被截断（max_tokens不足），正在尝试解析...');
     }
 
@@ -667,14 +1299,8 @@ function generateDynamicPersonality(character) {
 
     const pronoun = getPronoun(char.gender);
 
-    // 基础性格模板
-    const basePersonality = {
-        huiwu: "男性，22岁，榆木脑袋的顶尖学霸，极度理性，不善言辞，但内心细腻；思考方式像工程师，会用逻辑来解释情感，但情感本身是真实的。",
-        sanjiu: "女性，21岁，沉默寡言，不擅表达，情感藏得极深；对艺术有近乎本能的感知，行动缓慢而精确，说话极少但每句都有重量。",
-        wuyue: "女性，22岁，努力认真，不会撒谎，对食物有真诚的热爱；表达直接，情绪写在脸上，会用做饭来表达关心，偶尔有点小贪心但从不掩饰。"
-    };
-
-    let personality = basePersonality[character] || '';
+    // 使用角色配置中的性格描述作为基础（支持任意数量的自定义角色）
+    let personality = char.personality || '';
 
     // 睡眠状态优先级最高
     if (char.isSleeping) {
@@ -729,8 +1355,12 @@ function generateDynamicPersonality(character) {
     const relationships = Object.entries(char.relationship).map(([key, value]) => {
         const relationChar = gameState.characters[key];
         if (!relationChar) return '';
-        if (value < 0) {
-            return `对${relationChar.name}有些不满，交互保持距离。`;
+        if (value <= -61) {
+            return `对${relationChar.name}怀有强烈敌意，言行充满对立，极力回避或针对对方。`;
+        } else if (value <= -31) {
+            return `对${relationChar.name}明显反感，尽量回避接触，态度冷漠甚至带有敌意。`;
+        } else if (value < 0) {
+            return `对${relationChar.name}有些不满，交互保持距离，言辞略带生硬。`;
         } else if (value < 20) {
             return `与${relationChar.name}关系淡漠，交互平淡。`;
         } else if (value < 50) {
@@ -749,6 +1379,100 @@ function generateDynamicPersonality(character) {
     return personality;
 }
 
+// ===== 动态 AI Prompt 构建（阶段4）=====
+
+// 动态生成系统提示词
+function buildSystemPrompt() {
+    const chars = Object.values(gameState.characters);
+
+    // 生成动态的角色性格描述
+    const dynamicPersonalities = {};
+    for (const [charId, char] of Object.entries(gameState.characters)) {
+        dynamicPersonalities[char.name] = generateDynamicPersonality(charId);
+    }
+
+    // 构建角色列表（最多5个）
+    let charDescriptions = '';
+    chars.forEach((char, idx) => {
+        charDescriptions += `${idx + 1}. ${char.name}：${dynamicPersonalities[char.name]}\n`;
+    });
+
+    // 构建职业规范
+    let careerRules = '';
+    chars.forEach(char => {
+        careerRules += `- ${char.name}（${char.career}，月薪¥${char.monthlyIncome}）：${char.careerPrompt || '自由安排工作时间。'}\n`;
+    });
+
+    // 构建性别代词规则
+    let pronounRules = '';
+    chars.forEach(char => {
+        const pronoun = char.gender === 'male' ? '他' : '她';
+        pronounRules += `- ${char.name}（${char.gender === 'male' ? '男' : '女'}）：用"${pronoun}"代指\n`;
+    });
+
+    // 构建房间列表（动态，最多12个）
+    let roomList = '';
+    for (const [roomId, room] of Object.entries(gameState.apartment.rooms)) {
+        roomList += `- ${roomId}: ${room.name}  `;
+    }
+    roomList += `- outside: 外出`;
+
+    // 构建角色数量提示
+    const charCount = chars.length;
+    const actionCountText = charCount === 1 ? '一个' : charCount === 2 ? '两个' : charCount === 3 ? '三个' : charCount.toString();
+
+    const systemPrompt = `你是一位文学素养极高的生活模拟游戏叙事者，负责为公寓里${actionCountText}位角色生成日常生活行为。
+
+【角色性格设定】
+${charDescriptions}
+
+【职业行为规范——生成action时必须参考】
+${careerRules}
+
+【性别代词】
+${pronounRules}
+
+【场景设定】多人公寓，房间 ID 如下：
+${roomList}
+
+【写作风格要求——极为重要】
+"thought" 和 "action" 必须像优秀短篇小说里的句子，而非游戏任务说明。具体要求：
+- "thought"：用第三人称写角色内心世界，要有具体的感官细节、情绪温度和性格逻辑，不得写成"他想去做某事"的简单陈述。要有画面感，有潜台词。
+- "action"：描写行为的过程和细节，包括肢体动作、神态、环境感受，如同电影镜头，而非流水账。避免"他去做了X"这种干燥写法。
+- "result"：要有余韵，不只是陈述结果，要带出一点情绪或感受。
+- "narrative"：用散文笔法串联${actionCountText}人，要有意象、有节奏，像一段精炼的小说场景描写。
+
+【反例——禁止这样写】
+思考："精力低了，应该去厨房吃东西补充能量。"
+行为："角色保存文件，走向厨房，询问是否可以一起吃东西。"
+
+【正例——应该这样写】
+思考："脑子像是被抽空了一层，屏幕上的字开始发虚。不是累，是那种过载之后的空白——饿也是真的饿，只是这会儿连饥饿感都变得很远。"
+行为："推开房间的门，走廊里有点冷，没去开灯，摸黑走进厨房，打开冰箱，冷光照在脸上，就那么站着，盯着里面看了好一会儿，才慢慢伸手拿出食物。"
+
+你必须严格返回 JSON 格式，包含以下字段：
+1. "actions": 数组，包含${actionCountText}个角色的行为，每个元素包含：
+   - "character": 角色名称（${chars.map(c => `"${c.name}"`).join(', ')} 之一）
+   - "thought": 角色内心世界（文学化，100-170字）
+   - "action": 行为过程描写（文学化，100-200字）
+   - "result": 结果与余韵（50-100字）
+   - "duration": 行为持续时间（分钟，5-120之间）
+   - "stat_changes": { "mood": -10到+10, "energy": -20到+10, "satiety": -15到+25, "hygiene": -15到+10, "wallet": 消费变化 }
+   - "interaction_with": 互动的角色名（无则为null）
+   - "dialogue": （当interaction_with不为null时必填）角色间的实际对话，数组，4-10句，严格符合各自性格，来回自然流动，格式：[{"speaker": "角色名", "line": "对话内容"}, ...]
+   - "new_room": 目标房间英文ID
+   - "actionType": 行为类型（primary_work|secondary_work|daily_life|leisure|rest|social）
+   - "workOutput": （可选）创作成果，结构：{ "title": "作品名", "type": "illustration|food_photo|video", "description": "30字内描述" }
+   - "skill_changes": （可选）技能变化，结构：{ "learn": ["新技能"], "forget": ["失去的技能"] }，仅当角色通过本次行为确实学到或失去了技能时填写
+
+2. "narrative": 散文化场景叙述（80-150字）
+3. "time_passed": 游戏时间流逝分钟数
+
+严格返回JSON，不含任何额外文字。`;
+
+    return systemPrompt;
+}
+
 // 调用 DeepSeek API - 获取角色行为决策
 async function callAI(prompt) {
     if (!gameState.apiKey) {
@@ -756,87 +1480,19 @@ async function callAI(prompt) {
     }
 
     try {
-        // 生成动态的角色性格描述
-        const dynamicPersonalities = {
-            huiwu: generateDynamicPersonality('huiwu'),
-            sanjiu: generateDynamicPersonality('sanjiu'),
-            wuyue: generateDynamicPersonality('wuyue')
-        };
+        const systemPrompt = buildSystemPrompt();
 
-        const systemPrompt = `你是一位文学素养极高的生活模拟游戏叙事者，负责为公寓里三位角色生成日常生活行为。
-
-【角色性格设定】
-1. 惠舞：${dynamicPersonalities.huiwu}
-2. 三玖：${dynamicPersonalities.sanjiu}
-3. 五月：${dynamicPersonalities.wuyue}
-
-【职业行为规范——生成action时必须参考】
-- 惠舞（AI算法工程师，月薪¥15000）：工作日他有正式的工作责任感，上午9-12点和下午14-18点有明确的工作时段。工作时会在书房长时间专注编程，状态好时可连续工作2-3小时。不是随时都愿意被打扰。
-- 三玖（插画师，月薪¥8000）：自由职业者，工作时间灵活但有自律性。上午10-13点、下午15-18点会专注创作，创作时沉浸其中，外人难以打断。她的"工作"是绘画而非家务。
-- 五月（美食博主，月薪¥10000）：她的工作包括烹饪内容创作、拍摄、剪辑、发布，【不等于每顿饭都要亲自做给别人吃】。她也需要在电脑前工作（剪辑视频、写稿）。早晨偶尔做早餐是她表达关心的方式，但这不是她的职责，也不是每天都做的事。
-
-【性别代词】
-- 惠舞（${gameState.characters.huiwu.gender === 'male' ? '男' : '女'}）：用"他"代指
-- 三玖（${gameState.characters.sanjiu.gender === 'male' ? '男' : '女'}）：用"她"代指
-- 五月（${gameState.characters.wuyue.gender === 'male' ? '男' : '女'}）：用"她"代指
-
-【场景设定】三室一厅公寓，房间 ID 如下：
-- livingRoom: 客厅  - kitchen: 厨房  - bathroom: 卫生间
-- bathRoom: 浴室  - studyRoom: 书房
-- bedroom1: 惠舞的卧室  - bedroom2: 三玖的卧室  - bedroom3: 五月的卧室  - outside: 外出
-
-【写作风格要求——极为重要】
-"thought" 和 "action" 必须像优秀短篇小说里的句子，而非游戏任务说明。具体要求：
-- "thought"：用第三人称写角色内心世界，要有具体的感官细节、情绪温度和性格逻辑，不得写成"他想去做某事"的简单陈述。要有画面感，有潜台词。
-- "action"：描写行为的过程和细节，包括肢体动作、神态、环境感受，如同电影镜头，而非流水账。避免"他去做了X"这种干燥写法。
-- "result"：要有余韵，不只是陈述结果，要带出一点情绪或感受。
-- "narrative"：用散文笔法串联三人，要有意象、有节奏，像一段精炼的小说场景描写。
-
-【反例——禁止这样写】
-思考："精力低了，应该去厨房吃东西补充能量。"
-行为："惠舞保存文件，走向厨房，询问五月是否可以一起吃东西。"
-
-【正例——应该这样写】
-思考："脑子像是被抽空了一层，屏幕上的字开始发虚。不是累，是那种过载之后的空白——饿也是真的饿，只是这会儿连饥饿感都变得很远。"
-行为："推开书房的门，走廊里有点冷，他没去开灯，摸黑走进厨房，打开冰箱，冷光照在脸上，他就那么站着，盯着里面看了好一会儿，才慢慢伸手拿出牛奶。"
-
-你必须严格返回 JSON 格式，包含以下字段：
-1. "actions": 数组，包含三个角色的行为，每个元素包含：
-   - "character": 角色名称（"惠舞", "三玖" 或 "五月"）
-   - "thought": 角色内心世界（文学化，50-120字）
-   - "action": 行为过程描写（文学化，50-150字）
-   - "result": 结果与余韵（30-80字）
-   - "duration": 行为持续时间（分钟，5-120之间）
-   - "stat_changes": { "mood": -10到+10, "energy": -20到+10, "satiety": -15到+25（吃东西为正，活动消耗为负）, "hygiene": -15到+10, "wallet": 消费变化 }
-   - "interaction_with": 互动的角色名（无则为null）
-   - "new_room": 目标房间英文ID（不得含中文）
-   - "actionType": 行为类型分类，必须是以下之一：
-     * "primary_work" — 角色正在直接进行职业工作（惠舞编程/写代码，三玖画图/创作，五月拍摄/剪辑/写内容）
-     * "secondary_work" — 与工作相关的辅助活动（查资料、整理桌面、构思方案、回工作消息）
-     * "daily_life" — 日常生活行为（吃饭、做饭、洗漱、购物、打扫）
-     * "leisure" — 休闲娱乐（看电影、听音乐、玩游戏、散步、看书消遣）
-     * "rest" — 休息或睡眠（睡觉、小憩、冥想、静坐）
-     * "social" — 社交互动（与他人对话、陪伴、互动）
-   - "workOutput": （可选，仅创作类角色）若本次行为中角色真正"完成"了一件具体可见的创作成果，填写此字段，否则省略。
-     * 适用：三玖完成一幅画作/插画/素描，五月完成一道菜品摄影/一期视频剪辑
-     * 不适用：未完成草稿、日常练习、中途进展
-     * 结构：{ "title": "作品名（可自拟，如《沉默的女孩》）", "type": "illustration|food_photo|video", "description": "30字内中文描述作品内容" }
-
-【关系等级对照表——必须据此调整 thought/action 的措辞距离感与情感浓度】
-正向：0素昧平生 | 10点头之交 | 20普通熟人 | 30初步好感 | 40志趣相投 | 50可靠朋友 | 60亲密知己 | 70暧昧/心动 | 80初级恋人 | 90灵魂伴侣 | 100至死不渝
-负向：-10轻微排斥 | -20心生反感 | -30公开不睦 | -40交恶状态 | -50心怀怨恨 | -60敌对关系 | -70势不两立 | -80宿怨深仇 | -90不共戴天 | -100不死不休
-→ 关系等级越高，角色之间越自然默契，语言越省略，肢体越放松，思考里对方越具体真实；等级越低，越疏离、回避、甚至敌意。请务必让 thought 和 action 的细节体现出这种差异。
-
-2. "narrative": 散文化场景叙述（80-150字）
-3. "time_passed": 游戏时间流逝分钟数
-
-严格返回JSON，不含任何额外文字。`;
+        let userContent = prompt;
+        if (API_CONFIG.THINKING && API_CONFIG.THINKING_STYLE !== 'default') {
+            userContent += API_CONFIG.THINKING_STYLE === 'inner_os' ? INNER_OS_MARKER : NO_INNER_OS_MARKER;
+        }
 
         return await callDeepseekAPI([
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt }
-        ], true, 2000);
+            { role: 'user', content: userContent }
+        ], true, 10000);
     } catch (error) {
+        console.error('❌ AI 调用完整错误:', error);
         addLog(`API 调用失败: ${error.message}`, 'error');
         return null;
     }
@@ -887,7 +1543,7 @@ function updateCharactersMood() {
 function mockAIResponse(prompt) {
     console.log("Mocking Prompt:", prompt);
     return new Promise(resolve => {
-        setTimeout(() => {
+        setTimeout(async () => {
             // 根据当前时间生成不同的行为
             const hour = gameState.currentTime.getHours();
             const holidayInfo = CalendarPlugin.getHolidayInfo(gameState.currentTime);
@@ -1161,7 +1817,7 @@ function mockAIResponse(prompt) {
                 const actions = [];
 
                 for (const char of allChars) {
-                    const restAction = generateRestAction(char, allChars);
+                    const restAction = await generateRestAction(char, allChars);
                     if (restAction) {
                         actions.push(restAction);
                     }
@@ -1243,7 +1899,7 @@ async function callNightlyReviewAI(reviewPrompt) {
                 content: '你是游戏AI，负责评估角色关系日终变化。严格返回JSON，不含任何额外文字或markdown代码块。'
             },
             { role: 'user', content: reviewPrompt }
-        ], false, 800);
+        ], false, 1500);
     } catch (error) {
         throw new Error(`夜晚结算API错误: ${error.message}`);
     }
@@ -1303,17 +1959,12 @@ async function generateArtworkImagePrompt(char, workOutput, action) {
         return getMockArtworkPrompt(char.name, workOutput.type);
     }
 
-    // 惠舞（工程师）跳过
-    if (char.name === '惠舞') {
-        return null;
-    }
-
     const styleHint = getStyleHint(char.name, workOutput.type);
 
     const messages = [
         {
             role: 'system',
-            content: '你是专业的AI绘图Prompt工程师，精通Stable Diffusion和Midjourney提示词。根据角色作品信息生成高质量的中英双语描述。严格返回JSON，不含其他文字。'
+            content: '你是专业的AI绘图Prompt工程师，精通Stable Diffusion和Midjourney提示词。判断标准：作品本身必须是一件视觉产物（如一幅画、一张插画、一张照片、一帧视频截图），才返回 applicable: true 并生成提示词。若作品是代码、程序、算法、软件、文字报告、工程项目等非视觉产物必须返回 applicable: false。严格返回JSON，不含其他文字。'
         },
         {
             role: 'user',
@@ -1323,20 +1974,21 @@ async function generateArtworkImagePrompt(char, workOutput, action) {
 完成背景：${action.result ? action.result.slice(0, 80) : ''}
 风格参考：${styleHint}
 
-请生成该作品的中英双语描述。返回 JSON：
+请判断并返回JSON（无其他文字）：
 {
-  "description": "中文作品描述（30-50字，从观众视角）",
-  "prompt": "英文SD/MJ提示词（60-120词，逗号分隔）",
-  "negativePrompt": "负向提示词（20-30词）",
-  "style": "1-3个英文风格标签"
+  "applicable": true/false,
+  "description": "中文描述（30-50字，false时留空）",
+  "prompt": "英文提示词（最多120词，false时留空）",
+  "negativePrompt": "负向提示词（最多30词，false时留空）",
+  "style": "风格标签，false时留空"
 }`
         }
     ];
 
     try {
-        return await callDeepseekAPI(messages, true, 400);
+        return await callDeepseekAPI(messages, true, 2400);
     } catch (error) {
-        console.warn('文生图prompt生成失败:', error.message);
+        console.warn('文生图prompt生成失败，已跳过:', error.message);
         return null;
     }
 }
@@ -1350,17 +2002,31 @@ async function doNightlyRelationshipReview() {
         return;
     }
 
-    const interactionSummary = gameState.dailyInteractions.map((item, i) =>
-        `${i + 1}. ${item.actor}与${item.with}：${item.action}${item.result ? ' → ' + item.result : ''}`
-    ).join('\n');
+    const interactionSummary = gameState.dailyInteractions.map((item, i) => {
+        let entry = `${i + 1}. ${item.actor}与${item.with}：${item.action}${item.result ? ' → ' + item.result : ''}`;
+        if (Array.isArray(item.dialogue) && item.dialogue.length > 0) {
+            const dialogueText = item.dialogue.map(d => `${d.speaker}：「${d.line}」`).join(' / ');
+            entry += `\n   对话：${dialogueText}`;
+        }
+        return entry;
+    }).join('\n');
 
     const charSummary = Object.values(gameState.characters).map(char =>
         `${char.name}：${Object.entries(char.relationship).map(([id, val]) =>
-            `与${gameState.characters[id]?.name || id}: ${val}（${getRelationshipLevel(val)}）`
+            `与${gameState.characters[id]?.name || id}: ${getRelationshipLevel(val)}`
         ).join(', ')}`
     ).join('\n');
 
-    const reviewPrompt = `今天是第${gameState.dayCount - 1}天，三位角色度过了完整的一天。
+    const charNames = Object.values(gameState.characters).map(c => c.name);
+    const allPairs = [];
+    for (const a of charNames) {
+        for (const b of charNames) {
+            if (a !== b) allPairs.push(`${a}→${b}`);
+        }
+    }
+    const pairDesc = allPairs.join('、');
+
+    const reviewPrompt = `今天是第${gameState.dayCount - 1}天，${charNames.length}位角色度过了完整的一天。
 
 【今日互动记录（共${gameState.dailyInteractions.length}条）】
 ${interactionSummary}
@@ -1378,7 +2044,7 @@ ${charSummary}
     ...
   ]
 }
-必须覆盖全部六对方向（惠舞→三玖、惠舞→五月、三玖→惠舞、三玖→五月、五月→惠舞、五月→三玖）。严格返回JSON，不含额外文字。`;
+必须覆盖全部${allPairs.length}对方向（${pairDesc}）。严格返回JSON，不含额外文字。`;
 
     try {
         let result;
@@ -1479,9 +2145,12 @@ function isRestRelatedAction(action, thought) {
     return restKeywords.some(keyword => text.includes(keyword));
 }
 
-// 检测是否是睡眠相关行为
+// 检测是否为睡眠相关行为
 function isSleepRelatedAction(action, thought) {
-    const sleepKeywords = ['睡眠', '睡觉', '上床', '躺在床上', '闭眼', '入睡', '梦', '昏昏欲睡'];
+    const sleepKeywords = [
+        '睡觉', '睡眠', '上床', '躺下', '入睡', '休眠', '卧床',
+        '睡觉去', '睡着', '入睡', '梦', '梦乡', '昏昏欲睡', '打瞌睡', 'sleep', 'bed', 'bedroom'
+    ];
     const text = (action + thought).toLowerCase();
     return sleepKeywords.some(keyword => text.includes(keyword));
 }
@@ -1496,24 +2165,39 @@ function shouldSleep(character) {
     return isSleepWindow && isEnergyLow;
 }
 
-// 检查是否有"大动静"在其他房间（判断是否应该惊醒睡眠的角色）
+// 应用睡眠不足惩罚
+function applySleepPenalty(character) {
+    const sleepHours = (character.sleepDuration || 0) / 60;
+
+    if (sleepHours < 5) {
+        // 睡眠少于5小时，扣40精力值
+        character.energy = Math.max(20, character.energy - 40);
+        addLog(`⚠️ ${character.name}睡眠严重不足（${Math.round(sleepHours * 10) / 10}小时），精力大幅下降`, 'warning');
+    } else if (sleepHours < 7) {
+        // 睡眠少于7小时，扣20精力值
+        character.energy = Math.max(20, character.energy - 20);
+        addLog(`⚠️ ${character.name}睡眠不足（${Math.round(sleepHours * 10) / 10}小时），精力略有下降`, 'warning');
+    }
+    // 如果睡眠充足（>=7小时），不扣精力
+}
+
+// 检查是否有"大动静"在房间内（判断是否应该惊醒睡眠的角色）
 function hasDisturbanceInOtherRooms(sleepingCharRoom) {
-    // 如果有人在其他房间进行"大动静"活动，就会惊醒睡眠的角色
+    // 检查当前房间内是否有嘈杂活动
     const noisyKeywords = ['尖叫', '大喊', '摔', '碎', '打破', '爆炸', '呕吐', '呻吟', '哭', '大声'];
 
-    // 检查最后一个action中是否有嘈杂行为
-    let text = '';
-    for (const char of Object.values(gameState.characters)) {
-        if (char.currentRoom !== sleepingCharRoom && char.isSleeping === false) {
-            text += (char.currentAction || '').toLowerCase();
-        }
-    }
+    // 检查同房间的清醒角色是否在进行嘈杂活动
+    const othersInRoom = Object.values(gameState.characters).filter(char =>
+        char.currentRoom === sleepingCharRoom && !char.isSleeping
+    );
 
-    return noisyKeywords.some(keyword => text.includes(keyword));
+    return othersInRoom.some(char => {
+        const actionText = (char.currentAction || '').toLowerCase();
+        return noisyKeywords.some(keyword => actionText.includes(keyword));
+    });
 }
 
 // 核心游戏循环
-// 核心游戏循环 - 公寓生活模拟
 async function gameLoop() {
     if (gameState.isProcessing || gameState.isPaused || gameState.shouldStop) return;
 
@@ -1545,30 +2229,31 @@ ${Object.entries(gameState.apartment.rooms).map(([id, room]) =>
 ${Object.values(gameState.characters).map(char => `
 ${char.name} (${char.age}岁, ${char.personality})：
 - 当前位置 ID: ${char.currentRoom} (名称: ${gameState.apartment.rooms[char.currentRoom]?.name || '未知'})
-- 状态: ${char.status === 'unconscious' ? '晕倒中（无法行动）' : '清醒'}
+- 状态: ${(char.isSleeping || char.status === 'sleeping') ? '睡眠中（不应分配新行为）' : (char.status === 'unconscious' ? '晕倒中（无法行动）' : '清醒')}
 - 心情: ${char.mood}/100, 精力: ${char.energy}/100, 饱腹: ${char.satiety}/100, 卫生: ${char.hygiene}/100
 - 疲劳度: ${Math.round(char.fatigueLevel || 0)}/100 (当日工作: ${Math.round((char.workHoursToday || 0) * 10) / 10}h, 连续工作天数: ${char.consecutiveWorkDays || 0})
 - 钱包: ¥${char.wallet}, 职业: ${char.career} (月收入: ¥${char.monthlyIncome})
 - 当前行为: ${char.currentAction}
-- 与他人关系: ${Object.entries(char.relationship).map(([id, val]) => `与${gameState.characters[id]?.name || id}: ${val}（${getRelationshipLevel(val)}）`).join(', ')}
+- 与他人关系: ${Object.entries(char.relationship).map(([id, val]) => `与${gameState.characters[id]?.name || id}: ${getRelationshipLevel(val)}`).join(', ')}
 `).join('\n')}
 
 特殊状况：
 ${(() => {
-    const unconsciousChars = Object.values(gameState.characters).filter(char => char.status === 'unconscious');
-    if (unconsciousChars.length === 0) return '无晕倒角色';
-    return unconsciousChars.map(char =>
-        `${char.name}晕倒在${gameState.apartment.rooms[char.currentRoom]?.name || char.currentRoom}，需要照顾（其他角色可以尝试帮助）`
-    ).join('\n');
+    const specialChars = Object.values(gameState.characters).filter(char => char.status === 'unconscious' || char.isSleeping || char.status === 'sleeping');
+    if (specialChars.length === 0) return '无特殊角色状态';
+    return specialChars.map(char => {
+        if (char.status === 'unconscious') {
+            return `${char.name}晕倒在${gameState.apartment.rooms[char.currentRoom]?.name || char.currentRoom}，需要照顾（其他角色可以尝试帮助）`;
+        }
+        return `${char.name}正在${gameState.apartment.rooms[char.currentRoom]?.name || char.currentRoom}睡眠，不应被分配新行为，除非被惊醒或自然醒来`;
+    }).join('\n');
 })()}
 
-请为三位角色生成接下来一段时间（5-120分钟）的日常生活行为。
-生成行为时，如果涉及移动到新房间，请在 "new_room" 字段中使用对应的【英文 ID】（例如：想去厨房，new_room 应填写 "kitchen"；如果没有移动，请填写当前所在的【英文 ID】）。
-请确保 "new_room" 字段绝不包含中文。
+请为${Object.keys(gameState.characters).length}位角色生成接下来一段时间（5-120分钟）的日常生活行为。
 
 ⚠️ **紧急优先级规则**：
-- 如果某角色精力 < 10，该角色【必须】立刻去做恢复精力的事情（如卧室休息、看电影、听音乐、喝咖啡等），暂停其他一切计划。这是生理需求，不容商量。
-- 精力 10-30 范围：应该优先考虑休息而非工作。
+- 如果某角色精力 < 10，该角色【必须】立刻去做恢复精力的事情，暂停其他一切计划。不容商量。
+- 精力 10-30 范围：应该优先考虑休息。
 - 精力 > 30：可以正常工作或进行其他活动。
 
 考虑因素：
@@ -1578,35 +2263,42 @@ ${(() => {
 4. 角色的性格特点
 5. 角色的当前状态（心情、精力、饥饿、卫生、状态）
 6. 如果角色状态为"晕倒中"，该角色无法行动，其他角色可以照顾或帮助晕倒的角色（例如：将晕倒角色移动到卧室、喂食、陪伴等）
-7. 角色之间的互动可能性
-8. 房间的可用性和功能
-9. 职业工作时段（工作日必须遵守）：
-   - 惠舞（AI算法工程师）：上午9-12点、下午14-18点 应优先安排编程/开发工作，除非精力<30或正在吃饭
-   - 三玖（插画师）：上午10-13点、下午15-18点 应优先安排绘画/设计创作，除非精力<30
-   - 五月（美食博主）：她的职业工作包括【内容选题、脚本写作、食材采购、拍摄、剪辑、发布】，这些都是她的工作，每天需有1-3个工作型action；做饭只在早晨和晚上为合理，中间时段应做博主相关工作
-10. 行为连续性规则：
+7. 如果角色状态为"睡眠中"（isSleeping=true 或 status='sleeping'），该角色本轮必须返回休眠行为（如"在熟睡中..."），不得生成新的行动计划
+8. 角色之间的互动可能性
+9. 房间的可用性和功能
+10. 职业工作时段（工作日必须遵守）：
+${Object.values(gameState.characters).map(char => `   - ${char.name}（${char.career}）：${char.careerPrompt || '自由安排工作时间。'}`).join('\n')}
+11. 行为连续性规则：
    - 角色上一次行为如果是工作，下一次在工作时段内应继续工作（除非精力<40）
    - 角色上一次行为如果是吃饭，下一次应回到工作或休息，不应再做饭
-   - 五月连续两次做饭后，下一次必须安排非烹饪行为
-11. 行为类型说明（actionType 必须精确标注）：
-   - primary_work = 主要职业工作（惠舞编程、三玖画画、五月拍摄/剪辑/写脚本）
+   - 角色连续两次做饭后，下一次必须安排非烹饪行为
+12. 行为类型说明（actionType 必须精确标注）：
+   - primary_work = 主要职业工作（各角色的核心职业行为，如编程、绘画、拍摄/剪辑/写脚本等）
    - secondary_work = 辅助工作（查资料、整理工作台、头脑风暴、构思方案）
-   - daily_life = 日常生活（吃饭、做饭、洗漱、购物、打扫）
+   - daily_life = 日常生活（洗漱、购物、打扫）
    - leisure = 休闲娱乐（看电影、听音乐、玩游戏、散步、看书）
    - rest = 休息睡眠（睡觉、小憩、冥想、静坐）
    - social = 社交互动（与他人对话、陪伴、互动、聊天）
-12. 角色上一轮行为（用于判断连续性）：
-   - 惠舞：${gameState.characters.huiwu.currentAction.slice(0, 40) || '无'}（行为类型：${gameState.characters.huiwu.lastActionType}）
-   - 三玖：${gameState.characters.sanjiu.currentAction.slice(0, 40) || '无'}（行为类型：${gameState.characters.sanjiu.lastActionType}）
-   - 五月：${gameState.characters.wuyue.currentAction.slice(0, 40) || '无'}（行为类型：${gameState.characters.wuyue.lastActionType}）
+13. 角色上一轮行为（用于判断连续性）：
+${Object.values(gameState.characters).map(char => `   - ${char.name}：${(char.currentAction || '').slice(0, 40) || '无'}（行为类型：${char.lastActionType || '无'}）`).join('\n')}
+${gameState.recentEvents.length > 0 ? `
+14. 近期事件记忆（严格基于此保持上下文连贯，不得重复已发生的对话内容）：
+${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.length - 1 ? '上' : '上上'}轮】\n${e}`).join('\n')}
+` : ''}
 
 请确保行为自然、符合角色性格，并考虑真实的生活逻辑。
 特别注意：如果是节假日，角色可能会有特殊的活动安排，比如：
 - 周末：可能会睡懒觉、放松、外出购物或娱乐
 - 春节：可能会有家庭聚会、准备年夜饭、拜年等活动
-- 国庆节/劳动节：可能会有旅游计划、朋友聚会、休息放松
-- 其他节假日：根据节日特点安排相应的活动
-例如：饿了会去厨房找吃的，困了会去卧室睡觉，脏了会去洗澡等。
+- 节假日：根据节日特点安排相应的活动
+
+⚠️ **食物多样性要求**：涉及吃东西时，必须从以下丰富选项中自由发挥：
+- 从冰箱取食（甜点/零食）：布丁、慕斯蛋糕、冰淇淋、蛋挞、奶冻等各种甜食点心
+- 从冰箱取食（水果）：各种水果
+- 零食（卧室/客厅）：薯片、坚果、蜜饯、饼干、威化、豆干等各种零食
+- 正餐：泡面、速冻饺子、速冻汤圆、三明治、吐司等各种正餐
+- 做饭菜肴：红烧肉、蒜蓉西兰花、番茄炒蛋等各种菜肴
+每次生成含食物的行为，必须具体点名食物，且与前几轮不重复。
 
 严格返回要求的 JSON 格式。`;
 
@@ -1615,25 +2307,32 @@ ${(() => {
 
     const decision = await callAI(actionPrompt);
 
-    if (decision && decision.actions && Array.isArray(decision.actions)) {
+    if (!decision || !Array.isArray(decision.actions)) {
+        addLog('⚠️ AI 调用失败或返回无效响应，本轮已跳过', 'error');
+    } else {
         // 显示叙事描述
         if (decision.narrative) {
             addLog(`场景: ${decision.narrative}`, 'narrative');
         }
 
         // 处理每个角色的行为
+        // 用 Set 记录本轮已展示对话的互动对，避免 A↔B 双方都渲染对话
+        const shownDialoguePairs = new Set();
         for (const action of decision.actions) {
             const char = getCharacterByName(action.character);
             if (!char) continue;
 
             // 如果角色晕倒，跳过AI生成的行为，保持晕倒状态
             if (char.status === 'unconscious') {
+                char.isSleeping = false;
                 char.currentAction = '晕倒中（需要照顾）';
                 continue; // 跳过这个角色的行为处理，等待其他角色照顾
             }
 
             // 如果角色正在睡眠，跳过行为处理（由advanceGameTime管理睡眠）
-            if (char.isSleeping) {
+            if (char.isSleeping || char.status === 'sleeping') {
+                char.isSleeping = true;
+                char.status = 'sleeping';
                 char.currentAction = '在熟睡中...';
                 continue; // 睡眠期间不执行新action
             }
@@ -1666,51 +2365,34 @@ ${(() => {
 
                 // 处理外出（字符串 'outside' 或 null）
                 if (toRoom === 'outside') {
-                    // 检查是否可以外出（只有客厅可以外出）
-                    if (fromRoom === 'livingRoom') {
-                        char.currentRoom = 'outside';
-                    } else {
-                        addLog(`${char.name}无法从${gameState.apartment.rooms[fromRoom]?.name || fromRoom}外出，只能从客厅外出`, 'error');
-                    }
+                    // 允许从任何房间外出
+                    char.currentRoom = 'outside';
                 }
                 // 处理正常房间移动
                 else if (gameState.apartment.rooms[toRoom]) {
-                    // 如果目标房间与当前房间相同，直接允许
-                    if (fromRoom === toRoom) {
-                        char.currentRoom = toRoom;
-                    } else if (fromRoom === 'outside') {
-                        // 从外面只能进入客厅（保留此逻辑以维持逻辑一致性，除非您也想取消它）
-                        if (toRoom === 'livingRoom') {
-                            char.currentRoom = toRoom;
-                        } else {
-                            addLog(`${char.name}试图从外面直接进入${gameState.apartment.rooms[toRoom]?.name || toRoom}，但只能进入客厅`, 'error');
-                        }
-                    } else {
-                        // 公寓内房间之间现在可以直接移动，不再检查 connections
-                        char.currentRoom = toRoom;
-                    }
+                    char.currentRoom = toRoom;
                 } else {
                     // 无效的房间ID
                     addLog(`${char.name}试图移动到无效的房间"${action.new_room}"，位置未更新`, 'error');
                 }
             } else if (action.new_room === null) {
                 // 角色外出（兼容旧版本，使用null表示外出）
-                const fromRoom = char.currentRoom;
-                if (fromRoom === 'livingRoom') {
-                    char.currentRoom = 'outside';
-                } else {
-                    addLog(`${char.name}无法从${gameState.apartment.rooms[fromRoom]?.name || fromRoom}外出，只能从客厅外出`, 'error');
-                }
+                char.currentRoom = 'outside';
             }
             // 如果action.new_room是undefined，不更新位置
 
             // 更新角色状态
             if (action.stat_changes) {
                 char.mood = Math.max(0, Math.min(100, char.mood + (action.stat_changes.mood || 0)));
-                char.energy = Math.max(0, Math.min(100, char.energy + (action.stat_changes.energy || 0)));
+                char.energy = Math.max(1, Math.min(100, char.energy + (action.stat_changes.energy || 0)));
                 char.satiety = Math.max(0, Math.min(100, char.satiety + (action.stat_changes.satiety || 0)));
                 char.hygiene = Math.max(0, Math.min(100, char.hygiene + (action.stat_changes.hygiene || 0)));
                 char.wallet = Math.max(0, char.wallet + (action.stat_changes.wallet || 0));
+            }
+
+            // 处理技能变化（阶段5）
+            if (action.skill_changes) {
+                applySkillChanges(char, action.skill_changes);
             }
 
             // 追踪工作小时数（基于实际游戏时间流逝）
@@ -1768,12 +2450,12 @@ ${(() => {
 
             // 检测作品完成，触发文生图命令词生成（fire-and-forget）
             const workOutput = action.workOutput || null;
-            if (workOutput && (char.name === '三玖' || char.name === '五月')) {
+            if (workOutput) {
                 const now = Date.now();
                 if (now - (gameState.lastArtworkPromptTime || 0) > 5000) {  // 5秒节流
                     gameState.lastArtworkPromptTime = now;
                     generateArtworkImagePrompt(char, workOutput, action).then(promptResult => {
-                        if (promptResult) {
+                        if (promptResult && promptResult.applicable !== false) {
                             const title = workOutput.title ? `《${workOutput.title}》` : '';
                             addLog(`✦ ${char.name} 完成了新作品 ${title}`, 'artwork');
                             if (promptResult.description) {
@@ -1784,20 +2466,53 @@ ${(() => {
                                 addLog(`[Negative] ${promptResult.negativePrompt}`, 'artwork-prompt');
                             }
                             ui.logSection.scrollTop = ui.logSection.scrollHeight;
+
+                            // 作品名+类型存入角色数据（随存档保存）
+                            if (!char.artworks) char.artworks = [];
+                            char.artworks.push({
+                                title: workOutput.title || '',
+                                type: workOutput.type || ''
+                            });
+
+                            // 完整提示词存入独立日志（不绑定存档槽）
+                            const artworkLog = JSON.parse(localStorage.getItem('artwork_prompt_log') || '[]');
+                            artworkLog.push({
+                                charName: char.name,
+                                title: workOutput.title || '',
+                                type: workOutput.type || '',
+                                description: promptResult.description || '',
+                                prompt: promptResult.prompt || '',
+                                negativePrompt: promptResult.negativePrompt || '',
+                                style: promptResult.style || '',
+                                gameTime: gameState.currentTime ? formatGameTime(new Date(gameState.currentTime)) : '',
+                                day: gameState.dayCount || 1
+                            });
+                            // 最多保留50条，超出时删除最旧的
+                            if (artworkLog.length > 50) artworkLog.splice(0, artworkLog.length - 50);
+                            localStorage.setItem('artwork_prompt_log', JSON.stringify(artworkLog));
                         }
-                    }).catch(() => {});  // 静默失败，不影响主循环
+                    }).catch(err => { console.warn('作品记录保存失败:', err); });  // 静默失败，不影响主循环
                 }
             }
 
             // 记录互动（累积到当天记录，供夜晚统一结算）
             if (action.interaction_with) {
                 addLog(`${char.name}与${action.interaction_with}进行了互动`, 'interaction');
+                // 用排序后的配对 key 判重，避免 A↔B 双方都渲染同一段对话
+                const pairKey = [char.name, action.interaction_with].sort().join('|');
+                if (Array.isArray(action.dialogue) && action.dialogue.length > 0 && !shownDialoguePairs.has(pairKey)) {
+                    shownDialoguePairs.add(pairKey);
+                    for (const line of action.dialogue) {
+                        addLog(`💬 ${line.speaker}：「${line.line}」`, 'interaction');
+                    }
+                }
                 gameState.dailyInteractions.push({
                     actor: char.name,
                     with: action.interaction_with,
                     thought: action.thought || '',
                     action: action.action || '',
-                    result: action.result || ''
+                    result: action.result || '',
+                    dialogue: action.dialogue || []
                 });
 
                 // 如果清醒角色在照顾晕倒的角色，将晕倒的角色移动到照顾者所在的房间
@@ -1812,6 +2527,17 @@ ${(() => {
                 }
             }
         }
+
+        // 将本轮关键事件存入 recentEvents，供下轮 prompt 使用（保留最近2轮）
+        const roundSummary = decision.actions.map(a => {
+            let s = `${a.character}：${(a.action || '').slice(0, 60)}`;
+            if (a.interaction_with && Array.isArray(a.dialogue) && a.dialogue.length > 0) {
+                s += `\n  与${a.interaction_with}的对话：` + a.dialogue.map(d => `${d.speaker}「${d.line}」`).join(' / ');
+            }
+            return s;
+        }).join('\n');
+        gameState.recentEvents.push(roundSummary);
+        if (gameState.recentEvents.length > 2) gameState.recentEvents.shift();
 
         // 更新时间
         let dayChanged = false;
@@ -1848,10 +2574,6 @@ ${(() => {
         }
 
         gameState.lastActionTime = new Date(gameState.currentTime);
-    } else {
-        addLog("AI 返回了无效的响应格式", 'error');
-        // 默认前进30分钟
-        advanceGameTime(30);
     }
 
     gameState.isProcessing = false;
@@ -1892,6 +2614,7 @@ function advanceGameTime(minutes) {
         gameState.dayCount++;
         dayChanged = true;
         addLog(`>>> 新的一天开始了！现在是第${gameState.dayCount}天 <<<`, 'system');
+        autoSave();
 
         // 每天重置：累计工作小时数清零，处理连续工作天数
         for (const char of Object.values(gameState.characters)) {
@@ -1921,9 +2644,18 @@ function advanceGameTime(minutes) {
         );
 
         // ==================== 睡眠管理系统 ====================
-        if (char.isSleeping) {
+        if (char.isSleeping || char.status === 'sleeping') {
+            char.isSleeping = true;
+            char.status = 'sleeping';
             // 角色正在睡眠中
             char.sleepDuration = (char.sleepDuration || 0) + minutes;
+
+            // 计算随机的清醒阈值（4-9小时之间）
+            // 如果还没有设置目标睡眠时长，就在入睡时随机生成一个
+            if (!char.targetSleepDuration) {
+                // 随机睡眠时长：4-9小时，每次+0.5小时
+                char.targetSleepDuration = (4 + Math.random() * 5.5) * 60; // 转换为分钟
+            }
 
             // 检查是否被惊醒（其他房间有大动静）
             if (hasDisturbanceInOtherRooms(char.currentRoom)) {
@@ -1934,26 +2666,43 @@ function advanceGameTime(minutes) {
                 if (disturbedRoom) {
                     addLog(`${char.name}被${disturbedRoom.name}在${gameState.apartment.rooms[disturbedRoom.currentRoom]?.name}的动静惊醒了`, 'system');
                 }
+                // 应用睡眠不足惩罚
+                applySleepPenalty(char);
                 char.isSleeping = false;
                 char.status = 'awake';
                 char.currentAction = '被惊醒了';
                 char.lastDisturbance = newTime;
+                char.targetSleepDuration = null;
             }
-            // 检查睡眠时长是否超过上限（11小时 = 660分钟）
-            else if (char.sleepDuration >= 660) {
-                addLog(`${char.name}睡饱了，自然醒来`, 'system');
+            // 检查是否到了目标睡眠时长
+            else if (char.sleepDuration >= char.targetSleepDuration) {
+                const sleepHours = Math.round(char.sleepDuration / 60 * 10) / 10;
+                addLog(`${char.name}睡饱了，自然醒来（睡眠${sleepHours}小时）`, 'system');
+                // 应用睡眠不足惩罚
+                applySleepPenalty(char);
                 char.isSleeping = false;
                 char.status = 'awake';
                 char.currentAction = '睡醒了';
                 char.sleepStartTime = null;
                 char.sleepDuration = 0;
+                char.targetSleepDuration = null;
+            }
+            // 检查是否超过绝对上限（11小时 = 660分钟），强制醒来
+            else if (char.sleepDuration >= 660) {
+                addLog(`${char.name}已经睡得够久了，强行起床`, 'system');
+                // 睡眠充足，不应用惩罚
+                char.isSleeping = false;
+                char.status = 'awake';
+                char.currentAction = '睡醒了';
+                char.sleepStartTime = null;
+                char.sleepDuration = 0;
+                char.targetSleepDuration = null;
             }
             // 睡眠时每小时恢复精力（更快的恢复速度）
             else {
                 char.energy = Math.min(100, char.energy + Math.floor(hoursPassed * 25)); // 睡眠恢复25点/小时
-                // 继续睡眠，每小时最多睡7-11小时
             }
-        } else if (char.status === 'awake' && char.isSleeping === false) {
+        } else if (char.status === 'awake' && !char.isSleeping) {
             // 角色清醒中，检查是否应该入睡
             // 只有在卧室才能进入睡眠状态
             if (char.currentRoom.includes('bedroom') && isSleepRelatedAction(char.currentAction, '')) {
@@ -1964,6 +2713,7 @@ function advanceGameTime(minutes) {
                     char.status = 'sleeping';
                     char.sleepStartTime = newTime;
                     char.sleepDuration = 0;
+                    char.targetSleepDuration = null; // 重置目标睡眠时长
                     addLog(`${char.name}进入了梦乡`, 'system');
                 }
             }
@@ -1976,7 +2726,7 @@ function advanceGameTime(minutes) {
         const hasCompanyInRoom = othersInRoom.length > 0;
 
         // 跳过已睡眠角色的能量计算
-        if (char.isSleeping) continue;
+        if (char.isSleeping || char.status === 'sleeping') continue;
 
         if (char.currentRoom.includes('bedroom')) {
             // 疲劳高时恢复速度稍慢
@@ -1985,8 +2735,10 @@ function advanceGameTime(minutes) {
             const companionBonus = hasCompanyInRoom ? 1.2 : 1.0;
             char.energy = Math.min(100, char.energy + Math.floor(hoursPassed * 20 * fatigueMultiplier * companionBonus));
         } else if (char.currentRoom === 'bathroom' || char.currentRoom === 'bathRoom') {
-            // 在浴室洗漱也能小幅恢复（每小时恢复8点）
-            char.energy = Math.min(100, char.energy + Math.floor(hoursPassed * 8));
+            // 在浴室洗漱的精力恢复
+            const isSleepWindow = hour >= 22 || hour < 6;
+            const recoveryRate = isSleepWindow ? 2 : 8; // 睡眠窗口期恢复2点/小时，其他时间8点/小时
+            char.energy = Math.min(100, char.energy + Math.floor(hoursPassed * recoveryRate));
         } else {
             // 其他房间：缓慢恢复（每小时1点基础恢复）+ 有陪伴时加速
             let passiveRecovery = 1; // 基础被动恢复
@@ -2010,7 +2762,7 @@ function advanceGameTime(minutes) {
             // 疲劳高时能量消耗增加，但被动恢复抵消部分消耗
             const fatigueMultiplier = 1 + (char.fatigueLevel || 0) / 300;
             const netEnergyChange = -(hoursPassed * energyRate * fatigueMultiplier) + (hoursPassed * passiveRecovery);
-            char.energy = Math.max(0, char.energy + Math.floor(netEnergyChange));
+            char.energy = Math.max(1, char.energy + Math.floor(netEnergyChange));
         }
 
         // 随时间降低饱腹值（每小时减少2点）
@@ -2025,7 +2777,8 @@ function advanceGameTime(minutes) {
         }
 
         // 检查晕倒/恢复状态（睡眠状态不检查晕倒）
-        if (!char.isSleeping) {
+        // 暂时禁用晕倒事件，精力最低保持在1
+        if (false && !(char.isSleeping || char.status === 'sleeping')) {
             if (char.energy <= 0 && char.status !== 'unconscious') {
                 // 精力耗尽，角色晕倒
                 char.status = 'unconscious';
@@ -2057,8 +2810,6 @@ function payMonthlySalaries() {
 function resetGame() {
     // 停止当前游戏循环
     gameState.shouldStop = true;
-
-    // 清除所有超时
     if (gameState.loopTimeoutId) {
         clearTimeout(gameState.loopTimeoutId);
         gameState.loopTimeoutId = null;
@@ -2072,103 +2823,32 @@ function resetGame() {
         gameState.actionResolve = null;
     }
 
-    // 重置游戏状态（保留 apiKey）
-    const savedApiKey = gameState.apiKey;
-
-    // 完全重置 gameState - 公寓生活模拟器版本
-    gameState.startTime = new Date('2025-03-04T08:00:00');
-    gameState.currentTime = new Date('2025-03-04T08:00:00');
-    gameState.timeMultiplier = 1;
-    gameState.dayCount = 1;
-    gameState.lastActionTime = null;
-
-    // 重置节假日信息
-    const holidayInfo = CalendarPlugin.isHoliday(gameState.currentTime);
-    gameState.currentHoliday = holidayInfo;
-    gameState.holidayDescription = holidayInfo.isHoliday ? holidayInfo.name : '工作日';
-
-    // 重置角色状态
-    gameState.characters.huiwu.mood = 80;
-    gameState.characters.huiwu.energy = 90;
-    gameState.characters.huiwu.satiety = 70;
-    gameState.characters.huiwu.hygiene = 85;
-    gameState.characters.huiwu.wallet = 5000;
-    gameState.characters.huiwu.currentRoom = "livingRoom";
-    gameState.characters.huiwu.currentAction = "无";
-    gameState.characters.huiwu.status = "awake";
-    gameState.characters.huiwu.workHoursToday = 0;
-    gameState.characters.huiwu.consecutiveWorkDays = 0;
-    gameState.characters.huiwu.fatigueLevel = 0;
-    gameState.characters.huiwu.isSleeping = false;
-    gameState.characters.huiwu.sleepStartTime = null;
-    gameState.characters.huiwu.sleepDuration = 0;
-
-    gameState.characters.sanjiu.mood = 70;
-    gameState.characters.sanjiu.energy = 85;
-    gameState.characters.sanjiu.satiety = 60;
-    gameState.characters.sanjiu.hygiene = 90;
-    gameState.characters.sanjiu.wallet = 4000;
-    gameState.characters.sanjiu.currentRoom = "livingRoom";
-    gameState.characters.sanjiu.currentAction = "无";
-    gameState.characters.sanjiu.status = "awake";
-    gameState.characters.sanjiu.workHoursToday = 0;
-    gameState.characters.sanjiu.consecutiveWorkDays = 0;
-    gameState.characters.sanjiu.fatigueLevel = 0;
-    gameState.characters.sanjiu.isSleeping = false;
-    gameState.characters.sanjiu.sleepStartTime = null;
-    gameState.characters.sanjiu.sleepDuration = 0;
-
-    gameState.characters.wuyue.mood = 85;
-    gameState.characters.wuyue.energy = 95;
-    gameState.characters.wuyue.satiety = 40;
-    gameState.characters.wuyue.hygiene = 75;
-    gameState.characters.wuyue.wallet = 3000;
-    gameState.characters.wuyue.currentRoom = "livingRoom";
-    gameState.characters.wuyue.currentAction = "无";
-    gameState.characters.wuyue.status = "awake";
-    gameState.characters.wuyue.workHoursToday = 0;
-    gameState.characters.wuyue.consecutiveWorkDays = 0;
-    gameState.characters.wuyue.fatigueLevel = 0;
-    gameState.characters.wuyue.isSleeping = false;
-    gameState.characters.wuyue.sleepStartTime = null;
-    gameState.characters.wuyue.sleepDuration = 0;
-
-    // 重置关系值
-    gameState.characters.huiwu.relationship.sanjiu = 60;
-    gameState.characters.huiwu.relationship.wuyue = 70;
-    gameState.characters.sanjiu.relationship.huiwu = 60;
-    gameState.characters.sanjiu.relationship.wuyue = 75;
-    gameState.characters.wuyue.relationship.huiwu = 70;
-    gameState.characters.wuyue.relationship.sanjiu = 75;
-
-    // 重置控制状态
-    gameState.isProcessing = false;
-    gameState.isPaused = false;
-    gameState.shouldStop = false;
-    gameState.loopTimeoutId = null;
-    gameState.actionTimeoutId = null;
-    gameState.actionResolve = null;
-    gameState.dailyInteractions = [];
-    gameState.apiKey = savedApiKey;
+    // 用当前 activeConfig 重建干净的 gameState（支持动态角色配置）
+    gameState = initGameStateFromConfig(activeConfig);
+    setupPanelState.currentConfig = deepClone(activeConfig);
+    syncSetupRelationshipValuesFromConfig();
+    setupPanelState.loadedGameState = null;
 
     // 清空游戏日志
     ui.gameLog.innerHTML = '';
 
-    // 重置 UI 按钮状态
-    ui.startBtn.innerText = "重置模拟"; // 保持重置按钮文本
-    ui.startBtn.disabled = false; // 确保按钮可用
-    ui.apiKeyInput.disabled = true; // 保持 API Key 输入框禁用
-    ui.pauseBtn.disabled = false; // 暂停按钮可用
-    ui.pauseBtn.innerText = "暂停模拟"; // 重置暂停按钮文本
-
-    // 添加重置日志
-    addLog("模拟器已重置。正在重新启动公寓生活模拟...", 'system');
-
-    // 更新 UI 显示重置后的状态
     updateUI();
+    addLog("模拟器已重置，请重新配置后开始游戏。", 'system');
 
-    // 重新开始游戏循环
-    gameLoop();
+    // 恢复 UI 到初始状态（等待玩家重新配置）
+    ui.startBtn.innerText = "开始模拟";
+    ui.startBtn.disabled = false;
+    ui.apiKeyInput.disabled = false;
+    ui.apiKeyInput.value = '';
+    ui.pauseBtn.disabled = true;
+    ui.pauseBtn.innerText = "暂停模拟";
+
+    // 重新渲染设置面板并显示
+    renderPresetCards();
+    renderCharacterEditor();
+    renderRoomEditor();
+    renderSaveSlots();
+    document.getElementById('setup-overlay').classList.remove('hidden');
 }
 
 // 初始化
@@ -2176,6 +2856,7 @@ ui.startBtn.addEventListener('click', () => {
     if (ui.startBtn.innerText === "开始模拟") {
         // 启动游戏
         gameState.apiKey = ui.apiKeyInput.value;
+        updateApiKeyStatus();
         if (!gameState.apiKey) {
             addLog("未提供 API Key，启动模拟演示模式 (Mock Mode)", 'warning');
         } else {
@@ -2282,20 +2963,133 @@ function refreshSaveUI() {
 }
 
 // 保存游戏
-function saveGame(slotIndex) {
+// 自动存档（每过一个游戏天触发，写入专用槽）
+function autoSave() {
+    // 调试：检查角色是否有relationship字段
+    for (const [charId, char] of Object.entries(gameState.characters)) {
+        if (!char.relationship || typeof char.relationship !== 'object') {
+            console.warn(`❌ 自动保存前检测到角色 ${charId} (${char.name}) 缺少 relationship 字段`);
+        } else {
+            const relationshipCount = Object.keys(char.relationship).length;
+            console.log(`✅ 角色 ${charId} (${char.name}) 有 ${relationshipCount} 个关系值:`, char.relationship);
+        }
+    }
+
     const saveData = {
+        configSnapshot: deepClone(activeConfig),
         gameState: {
             startTime: gameState.startTime,
             currentTime: gameState.currentTime,
             timeMultiplier: gameState.timeMultiplier,
             dayCount: gameState.dayCount,
             characters: gameState.characters,
-            apartment: gameState.apartment, // 虽然目前是静态的，但也存一下以防未来有变动
-            lastActionTime: gameState.lastActionTime
+            apartment: gameState.apartment,
+            lastActionTime: gameState.lastActionTime,
+            dailyInteractions: gameState.dailyInteractions
         },
-        saveTimestamp: formatGameTime(new Date()) // 使用现实时间作为存档名
+        saveTimestamp: formatGameTime(new Date()),
+        isAutoSave: true
     };
 
+    // 调试：检查保存的数据中是否有relationship字段
+    const firstCharId = Object.keys(saveData.gameState.characters)[0];
+    if (firstCharId) {
+        const firstChar = saveData.gameState.characters[firstCharId];
+        console.log(`🔍 自动保存数据中第一个角色 ${firstCharId} (${firstChar?.name}) 的 relationship 字段:`, firstChar?.relationship);
+    }
+
+    localStorage.setItem('apartment_sim_autosave', JSON.stringify(saveData));
+    addLog(`💾 自动存档（第${gameState.dayCount}天）`, 'system');
+    renderSaveSlots();
+}
+
+// 尝试在页面启动时加载自动存档
+function tryLoadAutoSaveOnStartup() {
+    const rawData = localStorage.getItem('apartment_sim_autosave');
+    if (!rawData) {
+        console.log('ℹ️ 无自动存档，使用初始配置');
+        return false;
+    }
+
+    try {
+        const data = JSON.parse(rawData);
+        const loadedState = data.gameState;
+
+        if (!loadedState || !loadedState.characters) {
+            console.warn('⚠️ 自动存档数据不完整，使用初始配置');
+            return false;
+        }
+
+        console.log('🔄 检测到自动存档，正在恢复游戏状态...');
+
+        // 恢复游戏状态
+        gameState.startTime = new Date(loadedState.startTime);
+        gameState.currentTime = new Date(loadedState.currentTime);
+        gameState.timeMultiplier = loadedState.timeMultiplier;
+        gameState.dayCount = loadedState.dayCount;
+        gameState.characters = loadedState.characters;
+        if (loadedState.apartment) gameState.apartment = loadedState.apartment;
+        gameState.lastActionTime = loadedState.lastActionTime ? new Date(loadedState.lastActionTime) : null;
+        gameState.dailyInteractions = loadedState.dailyInteractions || [];
+
+        // 设置游戏状态为暂停（等待用户手动开始）
+        gameState.isPaused = true;
+        gameState.isProcessing = false;
+        gameState.shouldStop = false;
+
+        // 确保角色有必要的字段（兼容性）
+        for (const [charId, char] of Object.entries(gameState.characters)) {
+            // 检查 relationship 字段
+            if (!char.relationship || typeof char.relationship !== 'object') {
+                console.warn(`❌ 启动时加载：角色 ${charId} (${char.name}) 缺少 relationship 字段，正在初始化`);
+                char.relationship = {};
+
+                // 尝试从 config 恢复
+                const configChar = activeConfig?.characters?.find(c => c.id === charId);
+                if (configChar && configChar.initialRelationships) {
+                    char.relationship = deepClone(configChar.initialRelationships);
+                    console.log(`  ✅ 从 config 恢复了 relationship 字段`);
+                }
+            } else {
+                const relationshipCount = Object.keys(char.relationship).length;
+                console.log(`✅ 角色 ${charId} (${char.name}) 有 ${relationshipCount} 个关系值`);
+            }
+
+            // 确保其他必要字段存在
+            if (char.status === undefined) char.status = "awake";
+            if (char.isSleeping === undefined) char.isSleeping = false;
+
+            // 转换 Date 字段
+            if (char.lastRestTime) char.lastRestTime = new Date(char.lastRestTime);
+            if (char.lastWorkCheckTime) char.lastWorkCheckTime = new Date(char.lastWorkCheckTime);
+            if (char.sleepStartTime) char.sleepStartTime = new Date(char.sleepStartTime);
+        }
+
+        console.log('✅ 自动存档恢复完成，游戏时间:', formatGameTime(gameState.currentTime), '第', gameState.dayCount, '天');
+        console.log('✅ 游戏状态: 暂停中，等待用户点击"开始模拟"');
+        return true;
+    } catch (error) {
+        console.error('❌ 自动存档恢复失败:', error);
+        return false;
+    }
+}
+
+
+function saveGame(slotIndex) {
+    const saveData = {
+        configSnapshot: deepClone(activeConfig),
+        gameState: {
+            startTime: gameState.startTime,
+            currentTime: gameState.currentTime,
+            timeMultiplier: gameState.timeMultiplier,
+            dayCount: gameState.dayCount,
+            characters: gameState.characters,
+            apartment: gameState.apartment,
+            lastActionTime: gameState.lastActionTime,
+            dailyInteractions: gameState.dailyInteractions
+        },
+        saveTimestamp: formatGameTime(new Date())
+    };
     localStorage.setItem(`apartment_sim_save_${slotIndex + 1}`, JSON.stringify(saveData));
     addLog(`游戏已保存到存档位 ${slotIndex + 1}`, 'system');
     refreshSaveUI();
@@ -2321,20 +3115,76 @@ function loadGame(slotIndex) {
         gameState.dayCount = loadedState.dayCount;
         gameState.characters = loadedState.characters;
         // 确保角色有状态字段（兼容旧存档）
-        for (const char of Object.values(gameState.characters)) {
+        for (const [charId, char] of Object.entries(gameState.characters)) {
+            // 从 activeConfig 回填旧存档中缺失的静态描述字段
+            const configChar = activeConfig?.characters?.find(c => c.id === charId);
+            if (!char.careerPrompt) char.careerPrompt = configChar?.careerPrompt || '';
+            if (!char.personality)  char.personality  = configChar?.personality  || '';
+            if (!char.career)       char.career       = configChar?.career       || '';
+            if (!char.color)        char.color        = configChar?.color        || '#ff00ff';
             if (char.status === undefined) {
                 char.status = "awake"; // 默认值
             }
+            if (char.isSleeping === undefined) {
+                char.isSleeping = char.status === "sleeping";
+            }
+            if (char.isSleeping && char.status !== "sleeping") {
+                char.status = "sleeping";
+            }
+            if (char.status === "sleeping" && !char.isSleeping) {
+                char.isSleeping = true;
+            }
             // 根据精力值检查是否需要设置为晕倒
             if (char.energy <= 0) {
+                char.isSleeping = false;
                 char.status = "unconscious";
                 char.currentAction = "晕倒中";
             } else if (char.status === "unconscious" && char.energy >= 30) {
                 char.status = "awake";
             }
+
+            if (char.status === "sleeping") {
+                char.currentAction = "在熟睡中...";
+                if (char.sleepDuration === undefined || char.sleepDuration === null) {
+                    char.sleepDuration = 0;
+                }
+                if (char.sleepStartTime) {
+                    char.sleepStartTime = new Date(char.sleepStartTime);
+                } else {
+                    char.sleepStartTime = gameState.currentTime;
+                }
+            }
+
+            if (char.lastDisturbance) {
+                char.lastDisturbance = new Date(char.lastDisturbance);
+            }
+            if (char.lastRestTime) {
+                char.lastRestTime = new Date(char.lastRestTime);
+            }
+            if (char.lastWorkCheckTime) {
+                char.lastWorkCheckTime = new Date(char.lastWorkCheckTime);
+            }
+
+            // 调试：检查 relationship 字段
+            if (!char.relationship || typeof char.relationship !== 'object') {
+                console.warn(`❌ 加载存档时检测到角色 ${charId} (${char.name}) 缺少 relationship 字段，正在初始化`);
+                char.relationship = {};
+
+                // 尝试从 config 恢复 initialRelationships
+                if (configChar && configChar.initialRelationships) {
+                    char.relationship = deepClone(configChar.initialRelationships);
+                    console.log(`  ✅ 从 config 恢复了 relationship:`, char.relationship);
+                } else {
+                    console.log(`  ⚠️  config 中也无 initialRelationships，创建空对象`);
+                }
+            } else {
+                const relationshipCount = Object.keys(char.relationship).length;
+                console.log(`✅ 角色 ${charId} (${char.name}) 加载了 ${relationshipCount} 个关系值:`, char.relationship);
+            }
         }
         if (loadedState.apartment) gameState.apartment = loadedState.apartment;
         gameState.lastActionTime = loadedState.lastActionTime ? new Date(loadedState.lastActionTime) : null;
+        gameState.dailyInteractions = loadedState.dailyInteractions || [];
 
         // 确保 UI 按钮状态正确
         if (gameState.apiKey) {
@@ -2356,14 +3206,80 @@ function loadGame(slotIndex) {
     }
 }
 
-// 导出所有存档为文件
+// 将存档格式化为易读的文本格式（支持人工编辑）
+function formatSaveDataForExport(saveData) {
+    const data = JSON.parse(saveData);
+    const gs = data.gameState;
+
+    let output = '';
+    output += `╔═══════════════════════════════════════════════════════════════╗\n`;
+    output += `║                    公寓生活模拟器 存档文件                      ║\n`;
+    output += `╚═══════════════════════════════════════════════════════════════╝\n\n`;
+
+    // 保存信息
+    output += `【保存信息】\n`;
+    output += `保存时间: ${data.saveTimestamp}\n`;
+    output += `导出时间: ${new Date().toLocaleString('zh-CN')}\n\n`;
+
+    // 游戏进度
+    output += `【游戏进度】\n`;
+    output += `当前日期: 第 ${gs.dayCount} 天\n`;
+    output += `当前时间: ${formatGameTime(new Date(gs.currentTime))}\n`;
+    output += `游戏时间倍率: ${gs.timeMultiplier}x\n\n`;
+
+    // 角色状态
+    output += `【角色状态】\n`;
+    for (const [charName, char] of Object.entries(gs.characters)) {
+        output += `\n${charName}:\n`;
+        output += `  位置: ${char.currentLocation}\n`;
+        output += `  精力: ${char.energy}/100\n`;
+        output += `  状态: ${char.status}\n`;
+        output += `  当前行为: ${char.currentAction}\n`;
+    }
+    output += `\n\n`;
+
+    // 原始 JSON 数据（用于导入）
+    output += `【完整数据】\n`;
+    output += `${JSON.stringify({gameState: gs, saveTimestamp: data.saveTimestamp}, null, 2)}\n`;
+
+    return output;
+}
+
+// 从导出的文本格式提取 JSON 数据
+function extractJsonFromExportFormat(text) {
+    // 查找【完整数据】部分
+    const startIdx = text.indexOf('【完整数据】\n');
+    if (startIdx === -1) {
+        // 如果是纯 JSON，直接解析
+        try {
+            return JSON.parse(text);
+        } catch {
+            return null;
+        }
+    }
+
+    const jsonStr = text.substring(startIdx + 6).trim();
+    try {
+        return JSON.parse(jsonStr);
+    } catch {
+        return null;
+    }
+}
+
+// 导出所有存档为单个JSON文件（易读 + 可恢复）
 function exportAllSaves() {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const allSaves = {};
+
     for (let i = 1; i <= 3; i++) {
         const key = `apartment_sim_save_${i}`;
         const data = localStorage.getItem(key);
         if (data) {
-            allSaves[key] = data;
+            try {
+                allSaves[key] = JSON.parse(data);
+            } catch (e) {
+                console.error(`处理存档 ${i} 失败:`, e);
+            }
         }
     }
 
@@ -2372,22 +3288,24 @@ function exportAllSaves() {
         return;
     }
 
-    const blob = new Blob([JSON.stringify(allSaves, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-
-    a.href = url;
-    a.download = `apartment_sim_saves_${timestamp}.json`;
-    document.body.appendChild(a);
-    a.click();
+    // 导出单个JSON文件（2空格缩进，易读 + 可恢复）
+    const jsonBlob = new Blob(
+        [JSON.stringify(allSaves, null, 2)],
+        { type: 'application/json; charset=utf-8' }
+    );
+    const jsonUrl = URL.createObjectURL(jsonBlob);
+    const jsonA = document.createElement('a');
+    jsonA.href = jsonUrl;
+    jsonA.download = `apartment_sim_saves_${timestamp}.json`;
+    document.body.appendChild(jsonA);
+    jsonA.click();
 
     setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }, 0);
+        document.body.removeChild(jsonA);
+        URL.revokeObjectURL(jsonUrl);
+    }, 100);
 
-    addLog("存档已导出为 JSON 文件。", 'system');
+    addLog("✅ 存档已导出为 JSON 文件。", 'system');
 }
 
 // 从文件导入存档
@@ -2398,28 +3316,66 @@ function importSaves(event) {
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
-            const importedData = JSON.parse(e.target.result);
+            const fileContent = e.target.result;
+            let importedData = null;
+
+            // 尝试解析 JSON
+            try {
+                const parsed = JSON.parse(fileContent);
+
+                // 检查是否包含 apartment_sim_save_* 键
+                if (Object.keys(parsed).some(key => key.startsWith('apartment_sim_save_'))) {
+                    importedData = parsed;
+                }
+            } catch {
+                // 如果不是有效的 JSON，尝试从文本格式提取
+                if (fileContent.includes('【完整数据】')) {
+                    const regex = /【完整数据】\n([\s\S]*?)(?=存档位|$)/g;
+                    let match;
+                    importedData = {};
+                    let slotNum = 1;
+
+                    while ((match = regex.exec(fileContent)) !== null) {
+                        const jsonStr = match[1].trim();
+                        try {
+                            const parsed = JSON.parse(jsonStr);
+                            const key = `apartment_sim_save_${slotNum}`;
+                            importedData[key] = parsed;
+                            slotNum++;
+                        } catch {
+                            console.warn(`无法解析存档位 ${slotNum}`);
+                        }
+                    }
+                }
+            }
+
+            if (!importedData || Object.keys(importedData).length === 0) {
+                throw new Error("无法识别文件格式");
+            }
+
             let count = 0;
 
-            // 简单校验并写入 localStorage
+            // 写入 localStorage
             for (const key in importedData) {
                 if (key.startsWith('apartment_sim_save_')) {
-                    localStorage.setItem(key, importedData[key]);
+                    const value = typeof importedData[key] === 'string'
+                        ? importedData[key]
+                        : JSON.stringify(importedData[key]);
+                    localStorage.setItem(key, value);
                     count++;
                 }
             }
 
             if (count > 0) {
-                addLog(`成功导入 ${count} 个存档位。`, 'system');
+                addLog(`✅ 成功导入 ${count} 个存档位。`, 'system');
                 refreshSaveUI();
             } else {
-                addLog("导入失败：文件中未发现有效的存档数据。", 'error');
+                throw new Error("文件中未找到有效的存档数据");
             }
         } catch (err) {
             console.error("导入存档失败:", err);
-            addLog("导入失败：文件格式错误或已损坏。", 'error');
+            addLog(`❌ 导入失败：${err.message}`, 'error');
         }
-        // 清空输入框以便下次选择同一文件
         ui.importInput.value = '';
     };
     reader.readAsText(file);
@@ -2449,3 +3405,1615 @@ refreshSaveUI();
 
 addLog("公寓生活模拟器就绪。请配置 API Key 后开始模拟。");
 updateUI();
+
+// ===== 游戏前设置面板系统（阶段9）=====
+
+let setupPanelState = {
+    selectedPreset: 'default_threegirls',
+    currentConfig: deepClone(GAME_PRESETS['default_threegirls'].config),
+    relationshipValues: {}  // 存储关系度值，格式: "fromId>toId": value
+};
+
+function getSetupRelationshipKey(fromId, toId) {
+    return `${fromId}>${toId}`;
+}
+
+function syncSetupRelationshipValuesFromConfig() {
+    const chars = setupPanelState.currentConfig.characters || [];
+    const nextValues = {};
+
+    chars.forEach(char => {
+        if (!char.initialRelationships || typeof char.initialRelationships !== 'object') {
+            char.initialRelationships = {};
+        }
+    });
+
+    for (const fromChar of chars) {
+        for (const toChar of chars) {
+            if (fromChar.id === toChar.id) continue;
+
+            const relKey = getSetupRelationshipKey(fromChar.id, toChar.id);
+            const parsedValue = Number.parseInt(fromChar.initialRelationships[toChar.id], 10);
+            const relValue = Number.isFinite(parsedValue) ? parsedValue : 0;
+
+            fromChar.initialRelationships[toChar.id] = relValue;
+            nextValues[relKey] = relValue;
+        }
+    }
+
+    setupPanelState.relationshipValues = nextValues;
+}
+
+function refreshSetupRelationshipLabels(charId) {
+    const char = (setupPanelState.currentConfig.characters || []).find(item => item.id === charId);
+    if (!char) return;
+
+    document.querySelectorAll(`[data-setup-rel-char="${charId}"]`).forEach(el => {
+        el.textContent = char.name;
+        el.style.color = char.color;
+    });
+}
+
+// 初始化设置面板
+function initSetupPanel() {
+    renderPresetCards();
+    renderCharacterEditor();
+    renderRoomEditor();
+    renderSaveSlots();
+    setupTabNavigation();
+    setupEventListeners();
+    setupLoadDataListeners();
+}
+
+// 标签页导航
+function setupTabNavigation() {
+    const tabButtons = document.querySelectorAll('.setup-tab-btn');
+    const tabContents = document.querySelectorAll('.setup-tab-content');
+
+    tabButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabName = btn.dataset.tab;
+
+            // 移除所有active
+            tabButtons.forEach(b => b.classList.remove('active'));
+            tabContents.forEach(c => c.classList.remove('active'));
+
+            // 添加active到当前标签
+            btn.classList.add('active');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+        });
+    });
+}
+
+// 渲染预设卡片
+function renderPresetCards() {
+    const container = document.getElementById('preset-cards-container');
+    container.innerHTML = '';
+
+    for (const [presetId, preset] of Object.entries(GAME_PRESETS)) {
+        const card = document.createElement('div');
+        card.className = 'preset-card';
+        if (setupPanelState.selectedPreset === presetId) {
+            card.classList.add('selected');
+        }
+
+        card.innerHTML = `
+            <div class="preset-card-title">${preset.label}</div>
+            <div class="preset-card-desc">${preset.description}</div>
+        `;
+
+        card.addEventListener('click', () => selectPreset(presetId));
+        container.appendChild(card);
+    }
+}
+
+// 选择预设
+function selectPreset(presetId) {
+    setupPanelState.selectedPreset = presetId;
+    setupPanelState.currentConfig = deepClone(GAME_PRESETS[presetId].config);
+    syncSetupRelationshipValuesFromConfig();
+    renderPresetCards();
+    renderCharacterEditor();
+    renderRoomEditor();
+}
+
+// 渲染角色编辑器
+function renderCharacterEditor() {
+    const container = document.getElementById('char-list-editor');
+    container.innerHTML = '';
+
+    const chars = setupPanelState.currentConfig.characters || [];
+    const canAdd = chars.length < 5;
+
+    const addBtn = document.getElementById('add-char-btn');
+    addBtn.disabled = !canAdd;
+
+    chars.forEach((char, idx) => {
+        const item = document.createElement('div');
+        item.className = 'char-editor-item';
+        const stats = char.initialStats || {};
+        const roomOptions = (setupPanelState.currentConfig.rooms || [])
+            .map(room => `<option value="${room.id}" ${char.bedroomId === room.id ? 'selected' : ''}>${room.name}（${room.id}）</option>`)
+            .join('');
+        item.innerHTML = `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                <h4 style="color: #00ff41; margin: 0;">角色 ${idx + 1}</h4>
+                <button class="btn-remove" onclick="removeCharacter(${idx})">删除</button>
+            </div>
+            <div class="editor-field-row">
+                <div class="editor-field-group">
+                    <div class="editor-field-label">名字</div>
+                    <input type="text" value="${char.name}" oninput="updateCharField(${idx}, 'name', this.value)" />
+                </div>
+                <div class="editor-field-group" style="flex: 0.6;">
+                    <div class="editor-field-label">颜色</div>
+                    <div class="color-input-group" style="gap: 4px;">
+                        <input type="color" class="color-picker" value="${char.color}" oninput="updateSetupCharColor('${char.id}', this.value)" style="width: 40px; flex-shrink: 0;" />
+                        <input type="text" class="color-code" value="${char.color}" onchange="updateSetupCharColor('${char.id}', this.value)" style="flex: 1; font-size: 11px;" />
+                    </div>
+                </div>
+            </div>
+            <div class="editor-field-row">
+                <div class="editor-field-group">
+                    <div class="editor-field-label">性别</div>
+                    <select onchange="updateCharField(${idx}, 'gender', this.value)" style="width: 100%;">
+                        <option value="male" ${char.gender === 'male' ? 'selected' : ''}>男</option>
+                        <option value="female" ${char.gender === 'female' ? 'selected' : ''}>女</option>
+                    </select>
+                </div>
+                <div class="editor-field-group">
+                    <div class="editor-field-label">年龄</div>
+                    <input type="number" value="${char.age || 20}" oninput="updateCharField(${idx}, 'age', parseInt(this.value))" min="1" max="100" />
+                </div>
+            </div>
+            <div class="editor-field-row">
+                <div class="editor-field-group">
+                    <div class="editor-field-label">职业</div>
+                    <input type="text" value="${char.career}" oninput="updateCharField(${idx}, 'career', this.value)" />
+                </div>
+                <div class="editor-field-group">
+                    <div class="editor-field-label">月收入</div>
+                    <input type="number" value="${char.monthlyIncome}" oninput="updateCharField(${idx}, 'monthlyIncome', parseInt(this.value))" />
+                </div>
+            </div>
+            <div class="editor-field-group">
+                <div class="editor-field-label">技能（用英文逗号分隔）</div>
+                <input type="text" value="${(char.skills || []).join(', ')}" onchange="updateCharSkills(${idx}, this.value)" placeholder="例如：编程, 数学, 逻辑分析" />
+            </div>
+            <div class="editor-field-group">
+                <div class="editor-field-label">性格描述</div>
+                <textarea oninput="updateCharField(${idx}, 'personality', this.value)" style="height: 80px;">${char.personality}</textarea>
+            </div>
+            <div class="editor-field-group">
+                <div class="editor-field-label">工作提示（AI 行为规则）</div>
+                <textarea oninput="updateCharField(${idx}, 'careerPrompt', this.value)" style="height: 70px;" placeholder="例如：工作日上午9-12点为明确工作时段...">${char.careerPrompt || ''}</textarea>
+            </div>
+            <div class="editor-field-group">
+                <div class="editor-field-label">初始状态</div>
+                <div class="editor-field-row" style="flex-wrap: wrap; gap: 6px;">
+                    <div class="editor-field-group" style="flex: 1; min-width: 70px;">
+                        <div class="editor-field-label" style="font-size: 10px;">心情 (0-100)</div>
+                        <input type="number" value="${stats.mood ?? 70}" min="0" max="100" oninput="updateCharInitStat(${idx}, 'mood', parseInt(this.value))" />
+                    </div>
+                    <div class="editor-field-group" style="flex: 1; min-width: 70px;">
+                        <div class="editor-field-label" style="font-size: 10px;">精力 (0-100)</div>
+                        <input type="number" value="${stats.energy ?? 80}" min="0" max="100" oninput="updateCharInitStat(${idx}, 'energy', parseInt(this.value))" />
+                    </div>
+                    <div class="editor-field-group" style="flex: 1; min-width: 70px;">
+                        <div class="editor-field-label" style="font-size: 10px;">饱食 (0-100)</div>
+                        <input type="number" value="${stats.satiety ?? 60}" min="0" max="100" oninput="updateCharInitStat(${idx}, 'satiety', parseInt(this.value))" />
+                    </div>
+                    <div class="editor-field-group" style="flex: 1; min-width: 70px;">
+                        <div class="editor-field-label" style="font-size: 10px;">卫生 (0-100)</div>
+                        <input type="number" value="${stats.hygiene ?? 80}" min="0" max="100" oninput="updateCharInitStat(${idx}, 'hygiene', parseInt(this.value))" />
+                    </div>
+                    <div class="editor-field-group" style="flex: 1; min-width: 90px;">
+                        <div class="editor-field-label" style="font-size: 10px;">钱包 (¥)</div>
+                        <input type="number" value="${stats.wallet ?? 3000}" min="0" oninput="updateCharInitStat(${idx}, 'wallet', parseInt(this.value))" />
+                    </div>
+                </div>
+            </div>
+            <div class="editor-field-group">
+                <div class="editor-field-label">专属卧室</div>
+                <select onchange="updateCharField(${idx}, 'bedroomId', this.value)" style="width: 100%;">
+                    <option value="" ${!char.bedroomId ? 'selected' : ''}>-- 未分配 --</option>
+                    ${roomOptions}
+                </select>
+            </div>
+        `;
+        container.appendChild(item);
+    });
+
+    // 添加关系度设置部分
+    if (chars.length > 1) {
+        syncSetupRelationshipValuesFromConfig();
+
+        const relationshipItem = document.createElement('div');
+        relationshipItem.className = 'char-editor-item';
+        relationshipItem.style.backgroundColor = '#1a1a2e';
+        relationshipItem.style.borderLeft = '4px solid #00ff41';
+
+        let relationshipHtml = `
+            <h4 style="color: #00ff41; margin: 0 0 12px 0;">❤️ 角色间好感度</h4>
+        `;
+
+        for (let i = 0; i < chars.length; i++) {
+            for (let j = 0; j < chars.length; j++) {
+                if (i === j) continue;
+                const char1 = chars[i];
+                const char2 = chars[j];
+                const relKey = getSetupRelationshipKey(char1.id, char2.id);
+                const currentRel = setupPanelState.relationshipValues[relKey] ?? 0;
+
+                relationshipHtml += `
+                    <div style="margin-bottom: 10px;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                            <span data-setup-rel-char="${char1.id}" style="color: ${char1.color}; font-weight: bold;">${char1.name}</span>
+                            <span style="color: #888;">→</span>
+                            <span data-setup-rel-char="${char2.id}" style="color: ${char2.color}; font-weight: bold;">${char2.name}</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="range" min="-100" max="100" value="${currentRel}"
+                                   oninput="updateSetupRelationship('${relKey}', this.value); this.nextElementSibling.textContent = this.value"
+                                   style="flex: 1; cursor: pointer;" />
+                            <span style="color: #00ff41; min-width: 35px; text-align: right;">${currentRel}</span>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        relationshipItem.innerHTML = relationshipHtml;
+        container.appendChild(relationshipItem);
+    }
+}
+
+
+// 添加角色
+function addCharacter() {
+    if ((setupPanelState.currentConfig.characters || []).length >= 5) return;
+
+    const newChar = {
+        id: `char_${Date.now()}`,
+        name: `角色${(setupPanelState.currentConfig.characters?.length || 0) + 1}`,
+        color: '#ff00ff',
+        gender: 'female',
+        age: 20,
+        personality: '新角色',
+        career: '职业',
+        monthlyIncome: 10000,
+        careerPrompt: '工作提示',
+        skills: [],
+        initialStats: { mood: 70, energy: 80, satiety: 60, hygiene: 80, wallet: 3000 },
+        initialRelationships: {},
+        bedroomId: `bedroom_${(setupPanelState.currentConfig.characters?.length || 0)}`
+    };
+
+    if (!setupPanelState.currentConfig.characters) {
+        setupPanelState.currentConfig.characters = [];
+    }
+
+    const existingChars = setupPanelState.currentConfig.characters;
+    existingChars.forEach(char => {
+        if (!char.initialRelationships || typeof char.initialRelationships !== 'object') {
+            char.initialRelationships = {};
+        }
+        char.initialRelationships[newChar.id] = 0;
+        newChar.initialRelationships[char.id] = 0;
+    });
+
+    setupPanelState.currentConfig.characters.push(newChar);
+    syncSetupRelationshipValuesFromConfig();
+    renderCharacterEditor();
+}
+
+// 删除角色
+function removeCharacter(idx) {
+    const removedChar = setupPanelState.currentConfig.characters[idx];
+    setupPanelState.currentConfig.characters.splice(idx, 1);
+
+    if (removedChar) {
+        (setupPanelState.currentConfig.characters || []).forEach(char => {
+            if (char.initialRelationships) {
+                delete char.initialRelationships[removedChar.id];
+            }
+        });
+    }
+
+    syncSetupRelationshipValuesFromConfig();
+    renderCharacterEditor();
+}
+
+// 更新角色字段（不重渲染，避免输入框失去焦点）
+function updateCharField(idx, field, value) {
+    setupPanelState.currentConfig.characters[idx][field] = value;
+
+    if (field === 'name') {
+        refreshSetupRelationshipLabels(setupPanelState.currentConfig.characters[idx].id);
+    }
+}
+
+// 设置面板中更新角色颜色
+function updateSetupCharColor(charId, newColor) {
+    const char = setupPanelState.currentConfig.characters.find(c => c.id === charId);
+    if (!char) return;
+
+    // 验证颜色格式
+    if (!newColor.match(/^#[0-9a-fA-F]{6}$/)) {
+        console.warn(`Invalid color format: ${newColor}`);
+        return;
+    }
+
+    char.color = newColor;
+    // 同步到文本输入框（如果存在）
+    const textInput = document.querySelector(`.color-code[value="${newColor}"]`)?.parentElement?.querySelector('.color-code');
+    if (textInput && textInput.value !== newColor) {
+        textInput.value = newColor;
+    }
+
+    refreshSetupRelationshipLabels(charId);
+}
+
+// 更新角色初始状态数值
+function updateCharInitStat(idx, stat, value) {
+    if (!setupPanelState.currentConfig.characters[idx].initialStats) {
+        setupPanelState.currentConfig.characters[idx].initialStats = {};
+    }
+    setupPanelState.currentConfig.characters[idx].initialStats[stat] = value;
+}
+
+// 更新角色技能（从逗号分隔字符串解析）
+function updateCharSkills(idx, skillsString) {
+    if (setupPanelState.currentConfig.characters[idx]) {
+        const skills = skillsString
+            .split(',')
+            .map(skill => skill.trim())
+            .filter(skill => skill.length > 0);
+        setupPanelState.currentConfig.characters[idx].skills = skills;
+    }
+}
+
+// 更新设置面板中的关系度值
+function updateSetupRelationship(relKey, value) {
+    const parsedValue = Number.parseInt(value, 10);
+    const relValue = Number.isFinite(parsedValue) ? parsedValue : 0;
+    setupPanelState.relationshipValues[relKey] = relValue;
+
+    const [fromId, toId] = relKey.split('>');
+    const fromChar = (setupPanelState.currentConfig.characters || []).find(char => char.id === fromId);
+    if (!fromChar) return;
+
+    if (!fromChar.initialRelationships || typeof fromChar.initialRelationships !== 'object') {
+        fromChar.initialRelationships = {};
+    }
+
+    fromChar.initialRelationships[toId] = relValue;
+}
+
+// 渲染房间编辑器
+function renderRoomEditor() {
+    const container = document.getElementById('room-list-editor');
+    container.innerHTML = '';
+
+    const rooms = setupPanelState.currentConfig.rooms || [];
+    const canAdd = rooms.length < 12;
+
+    const addBtn = document.getElementById('add-room-btn');
+    addBtn.disabled = !canAdd;
+
+    rooms.forEach((room, idx) => {
+        const item = document.createElement('div');
+        item.className = 'room-editor-item';
+        item.innerHTML = `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                <h4 style="color: #00ff41; margin: 0;">房间 ${idx + 1}</h4>
+                <button class="btn-remove" onclick="removeRoom(${idx})" ${room.isHub ? 'disabled' : ''} title="${room.isHub ? '中心房间不可删除' : ''}">删除</button>
+            </div>
+            <div class="editor-field-row">
+                <div class="editor-field-group">
+                    <div class="editor-field-label">名字</div>
+                    <input type="text" value="${room.name}" onchange="updateRoomField(${idx}, 'name', this.value)" />
+                </div>
+                <div class="editor-field-group">
+                    <div class="editor-field-label">ID</div>
+                    <input type="text" value="${room.id}" readonly style="background: #333; cursor: not-allowed;" />
+                </div>
+            </div>
+            <div class="editor-field-group">
+                <div class="editor-field-label">描述</div>
+                <textarea onchange="updateRoomField(${idx}, 'description', this.value)" style="height: 60px;">${room.description}</textarea>
+            </div>
+        `;
+        container.appendChild(item);
+    });
+}
+
+// 添加房间
+function addRoom() {
+    if ((setupPanelState.currentConfig.rooms || []).length >= 12) return;
+
+    const newRoom = {
+        id: `room_${Date.now()}`,
+        name: `房间${(setupPanelState.currentConfig.rooms?.length || 0) + 1}`,
+        description: '新房间描述',
+        items: [],
+        isHub: false
+    };
+
+    if (!setupPanelState.currentConfig.rooms) {
+        setupPanelState.currentConfig.rooms = [];
+    }
+    setupPanelState.currentConfig.rooms.push(newRoom);
+    renderRoomEditor();
+    renderCharacterEditor();
+}
+
+// 删除房间
+function removeRoom(idx) {
+    const room = setupPanelState.currentConfig.rooms[idx];
+    if (room.isHub) return;
+
+    const removedRoomId = room.id;
+    setupPanelState.currentConfig.rooms.splice(idx, 1);
+
+    (setupPanelState.currentConfig.characters || []).forEach(char => {
+        if (char.bedroomId === removedRoomId) {
+            char.bedroomId = '';
+        }
+    });
+
+    renderRoomEditor();
+    renderCharacterEditor();
+}
+
+// 更新房间字段
+function updateRoomField(idx, field, value) {
+    setupPanelState.currentConfig.rooms[idx][field] = value;
+
+    if (field === 'name') {
+        renderCharacterEditor();
+    }
+}
+
+// 事件绑定
+function setupEventListeners() {
+    const startBtn = document.getElementById('start-game-btn');
+    const addCharBtn = document.getElementById('add-char-btn');
+    const addRoomBtn = document.getElementById('add-room-btn');
+    const apiKeyInput = document.getElementById('setup-api-key');
+
+    startBtn.addEventListener('click', startGameFromSetup);
+    addCharBtn.addEventListener('click', addCharacter);
+    addRoomBtn.addEventListener('click', addRoom);
+}
+
+// ===== 存档读取和导入功能 =====
+
+// 渲染本地存档槽位
+function renderSaveSlots() {
+    const container = document.getElementById('setup-save-slots');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    for (let i = 1; i <= 3; i++) {
+        const saveKey = `apartment_sim_save_${i}`;
+        const rawData = localStorage.getItem(saveKey);
+
+        const slot = document.createElement('div');
+        slot.className = rawData ? 'setup-save-slot' : 'setup-save-slot empty';
+
+        if (rawData) {
+            try {
+                const saveData = JSON.parse(rawData);
+                const timestamp = saveData.saveTimestamp || '未知时间';
+
+                // 获取角色数量和房间数量
+                const charCount = saveData.configSnapshot?.characters?.length
+                                ?? Object.keys(saveData.gameState?.characters || {}).length;
+                const roomCount = saveData.configSnapshot?.rooms?.length
+                                ?? Object.keys(saveData.gameState?.apartment?.rooms || {}).length;
+
+                // 获取游戏时间信息
+                const gameTime = saveData.gameState?.currentTime || saveData.configSnapshot?.startTime;
+                const gameTimeStr = gameTime ? formatGameTime(new Date(gameTime)) : '未知';
+                const dayCount = saveData.gameState?.dayCount || 1;
+
+                // 获取各角色当前行为
+                const charLines = saveData.gameState?.characters
+                    ? Object.values(saveData.gameState.characters)
+                        .map(c => `<span style="color:${c.color||'#ccc'}">${c.name}</span>：${c.currentAction || '未知'}`)
+                        .join('<br>')
+                    : '无角色信息';
+
+                slot.innerHTML = `
+                    <div class="setup-save-slot-header">
+                        <div class="setup-save-slot-title">存档 ${i}</div>
+                        <div class="setup-save-slot-time">${timestamp}</div>
+                    </div>
+                    <div class="setup-save-slot-info">
+                        <strong>游戏时间:</strong> ${gameTimeStr}<br>
+                        <strong>游戏天数:</strong> ${dayCount}<br>
+                        <strong>角色 (${charCount}):</strong><br>
+                        <div style="margin: 4px 0 4px 8px; font-size: 11px; line-height: 1.7;">${charLines}</div>
+                        <strong>房间:</strong> ${roomCount} 个
+                    </div>
+                    <div class="setup-save-slot-actions">
+                        <button onclick="loadSaveSlotToSetup(${i})">读取此存档</button>
+                        <button class="btn-secondary" onclick="deleteSaveSlot(${i})">删除</button>
+                    </div>
+                `;
+            } catch (e) {
+                slot.innerHTML = `
+                    <div class="setup-save-slot-header">
+                        <div class="setup-save-slot-title">存档 ${i}</div>
+                    </div>
+                    <div class="setup-save-slot-info" style="color: #ff9500;">
+                        ⚠️ 存档数据损坏
+                    </div>
+                    <div class="setup-save-slot-actions">
+                        <button class="btn-secondary" onclick="deleteSaveSlot(${i})">删除</button>
+                    </div>
+                `;
+            }
+        } else {
+            slot.innerHTML = `
+                <div class="setup-save-slot-header">
+                    <div class="setup-save-slot-title">存档 ${i}</div>
+                </div>
+                <div class="setup-save-slot-info">
+                    [空]
+                </div>
+            `;
+        }
+
+        container.appendChild(slot);
+    }
+
+    // 自动存档槽
+    const autoRaw = localStorage.getItem('apartment_sim_autosave');
+    const autoSlot = document.createElement('div');
+    if (autoRaw) {
+        try {
+            const saveData = JSON.parse(autoRaw);
+            const timestamp = saveData.saveTimestamp || '未知时间';
+            const charCount = saveData.configSnapshot?.characters?.length
+                            ?? Object.keys(saveData.gameState?.characters || {}).length;
+            const roomCount = saveData.configSnapshot?.rooms?.length
+                            ?? Object.keys(saveData.gameState?.apartment?.rooms || {}).length;
+            const gameTime = saveData.gameState?.currentTime || saveData.configSnapshot?.startTime;
+            const gameTimeStr = gameTime ? formatGameTime(new Date(gameTime)) : '未知';
+            const dayCount = saveData.gameState?.dayCount || 1;
+            const charLines = saveData.gameState?.characters
+                ? Object.values(saveData.gameState.characters)
+                    .map(c => `<span style="color:${c.color||'#ccc'}">${c.name}</span>：${c.currentAction || '未知'}`)
+                    .join('<br>')
+                : '无角色信息';
+
+            autoSlot.className = 'setup-save-slot';
+            autoSlot.innerHTML = `
+                <div class="setup-save-slot-header">
+                    <div class="setup-save-slot-title">💾 自动存档</div>
+                    <div class="setup-save-slot-time">${timestamp}</div>
+                </div>
+                <div class="setup-save-slot-info">
+                    <strong>游戏时间:</strong> ${gameTimeStr}<br>
+                    <strong>游戏天数:</strong> ${dayCount}<br>
+                    <strong>角色 (${charCount}):</strong><br>
+                    <div style="margin: 4px 0 4px 8px; font-size: 11px; line-height: 1.7;">${charLines}</div>
+                    <strong>房间:</strong> ${roomCount} 个
+                </div>
+                <div class="setup-save-slot-actions">
+                    <button onclick="loadAutoSaveToSetup()">读取此存档</button>
+                </div>
+            `;
+        } catch (e) {
+            autoSlot.className = 'setup-save-slot';
+            autoSlot.innerHTML = `
+                <div class="setup-save-slot-header">
+                    <div class="setup-save-slot-title">💾 自动存档</div>
+                </div>
+                <div class="setup-save-slot-info" style="color: #ff9500;">⚠️ 存档数据损坏</div>
+            `;
+        }
+    } else {
+        autoSlot.className = 'setup-save-slot empty';
+        autoSlot.innerHTML = `
+            <div class="setup-save-slot-header">
+                <div class="setup-save-slot-title">💾 自动存档</div>
+            </div>
+            <div class="setup-save-slot-info">[暂无自动存档]</div>
+        `;
+    }
+    container.appendChild(autoSlot);
+}
+
+// 从存档读取配置到设置面板
+function loadSaveSlotToSetup(slotIndex) {
+    const saveKey = `apartment_sim_save_${slotIndex}`;
+    const rawData = localStorage.getItem(saveKey);
+
+    if (!rawData) {
+        alert('该存档槽位为空');
+        return;
+    }
+
+    try {
+        const saveData = JSON.parse(rawData);
+
+        // 优先使用 configSnapshot，其次使用 gameState 中的数据
+        if (saveData.configSnapshot) {
+            setupPanelState.currentConfig = deepClone(saveData.configSnapshot);
+            setupPanelState.selectedPreset = null;
+        } else if (saveData.gameState) {
+            // 从旧存档格式恢复
+            const gameState = saveData.gameState;
+            const newConfig = deepClone(GAME_PRESETS['default_threegirls'].config);
+
+            // 尝试恢复角色信息
+            if (gameState.characters) {
+                newConfig.characters = [];
+                for (const [id, char] of Object.entries(gameState.characters)) {
+                    newConfig.characters.push({
+                        id: id,
+                        name: char.name,
+                        color: char.color || '#ff00ff',
+                        gender: char.gender,
+                        age: char.age,
+                        personality: char.personality,
+                        career: char.career,
+                        monthlyIncome: char.monthlyIncome,
+                        careerPrompt: char.careerPrompt || '',
+                        skills: [...(char.skills || [])],
+                        initialStats: {
+                            mood: char.mood,
+                            energy: char.energy,
+                            satiety: char.satiety,
+                            hygiene: char.hygiene,
+                            wallet: char.wallet
+                        },
+                        initialRelationships: deepClone(char.relationship || {}),
+                        bedroomId: char.bedroomId || `bedroom_${newConfig.characters.length}`
+                    });
+                }
+            }
+
+            setupPanelState.currentConfig = newConfig;
+            setupPanelState.selectedPreset = null;
+        }
+
+        // 保存游戏状态信息（用于恢复游戏进度）
+        setupPanelState.loadedGameState = saveData.gameState ? deepClone(saveData.gameState) : null;
+        syncSetupRelationshipValuesFromConfig();
+
+        // 刷新所有编辑器
+        renderPresetCards();
+        renderCharacterEditor();
+        renderRoomEditor();
+
+        // 切换到预设标签页并提示用户
+        document.querySelector('[data-tab="presets"]').click();
+        addLog(`✅ 已从存档 ${slotIndex} 读取配置`, 'system');
+    } catch (e) {
+        alert(`读取存档失败: ${e.message}`);
+    }
+}
+
+// 读取自动存档到设置面板
+function loadAutoSaveToSetup() {
+    const rawData = localStorage.getItem('apartment_sim_autosave');
+    if (!rawData) { alert('暂无自动存档'); return; }
+
+    try {
+        const saveData = JSON.parse(rawData);
+        if (saveData.configSnapshot) {
+            setupPanelState.currentConfig = deepClone(saveData.configSnapshot);
+            setupPanelState.selectedPreset = null;
+        }
+        setupPanelState.loadedGameState = saveData.gameState ? deepClone(saveData.gameState) : null;
+        syncSetupRelationshipValuesFromConfig();
+        renderPresetCards();
+        renderCharacterEditor();
+        renderRoomEditor();
+        document.querySelector('[data-tab="presets"]').click();
+        addLog('✅ 已从自动存档读取配置', 'system');
+    } catch (e) {
+        alert(`读取自动存档失败: ${e.message}`);
+    }
+}
+
+// 删除存档
+function deleteSaveSlot(slotIndex) {
+    if (!confirm(`确定要删除存档 ${slotIndex} 吗？`)) return;
+
+    const saveKey = `apartment_sim_save_${slotIndex}`;
+    localStorage.removeItem(saveKey);
+    renderSaveSlots();
+}
+
+// 设置导入功能
+function setupLoadDataListeners() {
+    const importBtn = document.getElementById('setup-import-btn');
+    const importInput = document.getElementById('setup-import-input');
+    const confirmBtn = document.getElementById('confirm-import-btn');
+
+    if (importBtn && importInput) {
+        importBtn.addEventListener('click', () => importInput.click());
+    }
+
+    if (importInput) {
+        importInput.addEventListener('change', (e) => previewImportFile(e));
+    }
+
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', confirmImportData);
+    }
+}
+
+// 预览导入的文件
+function previewImportFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const content = e.target.result;
+            let importData;
+
+            // 尝试解析 JSON
+            try {
+                importData = JSON.parse(content);
+            } catch {
+                // 如果不是 JSON，尝试从文本中提取
+                const jsonMatch = content.match(/\{[\s\S]*\}/);
+                if (!jsonMatch) {
+                    throw new Error('无法识别文件格式');
+                }
+                importData = JSON.parse(jsonMatch[0]);
+            }
+
+            console.log('导入的数据对象键:', Object.keys(importData));
+
+            // 识别文件格式：是多个存档汇总还是单个存档
+            const hasApartmentSimKey = Object.keys(importData).some(key => key.startsWith('apartment_sim_save_'));
+
+            // 显示预览
+            if (hasApartmentSimKey) {
+                // 多个存档汇总，用第一个用于预览，但保存所有存档
+                console.log('检测到多个存档格式');
+                const firstKey = Object.keys(importData).find(key => key.startsWith('apartment_sim_save_'));
+                const firstSave = importData[firstKey];
+                console.log('用于预览的存档:', firstKey);
+                showImportPreview(firstSave);
+                window.pendingImportData = importData; // 保存所有存档
+            } else {
+                // 单个存档
+                console.log('检测到单个存档格式');
+                showImportPreview(importData);
+                window.pendingImportData = importData;
+            }
+        } catch (err) {
+            console.error('previewImportFile error:', err);
+            alert(`文件读取失败: ${err.message}`);
+        }
+    };
+    reader.readAsText(file);
+}
+
+// 显示导入预览
+function showImportPreview(data) {
+    const previewDiv = document.getElementById('import-preview');
+    const previewContent = document.getElementById('import-preview-content');
+
+    if (!previewDiv || !previewContent) {
+        console.error('预览容器不存在');
+        return;
+    }
+
+    console.log('showImportPreview 接收的数据:', data);
+    console.log('数据的键:', Object.keys(data || {}));
+
+    let previewHtml = '';
+
+    // 检测配置快照
+    if (data && data.configSnapshot) {
+        const config = data.configSnapshot;
+        previewHtml += `
+            <div class="import-preview-item">
+                <div class="import-preview-label">📋 配置快照</div>
+                <div class="import-preview-value">
+                    角色: ${config.characters?.length || 0} 个<br>
+                    房间: ${config.rooms?.length || 0} 个
+                </div>
+            </div>
+        `;
+    } else if (data && data.gameState) {
+        const gs = data.gameState;
+        const charCount = gs.characters ? Object.keys(gs.characters).length : 0;
+        const roomCount = gs.apartment?.rooms ? Object.keys(gs.apartment.rooms).length : 0;
+
+        // 获取游戏时间
+        const gameTime = gs.currentTime ? new Date(gs.currentTime).toLocaleString('zh-CN') : '未知';
+
+        previewHtml += `
+            <div class="import-preview-item">
+                <div class="import-preview-label">📊 游戏状态</div>
+                <div class="import-preview-value">
+                    游戏时间: ${gameTime}<br>
+                    游戏天数: ${gs.dayCount || 1}<br>
+                    角色: ${charCount} 个<br>
+                    房间: ${roomCount} 个
+                </div>
+            </div>
+        `;
+    } else {
+        // 如果既不是配置快照也不是游戏状态，显示错误信息
+        console.warn('数据不包含有效的 configSnapshot 或 gameState');
+        previewHtml = `
+            <div class="import-preview-item">
+                <div class="import-preview-label" style="color: #ff9500;">⚠️ 文件格式错误</div>
+                <div class="import-preview-value">
+                    该文件不是有效的游戏配置或存档文件。<br>
+                    请确保导入的是来自本游戏的配置文件或存档。<br>
+                    <small style="color: #666; margin-top: 8px;">调试信息: ${data ? Object.keys(data).join(', ') : '空对象'}</small>
+                </div>
+            </div>
+        `;
+        previewContent.innerHTML = previewHtml;
+        previewDiv.style.display = 'block';
+        return;
+    }
+
+    // 显示角色列表
+    if (data && (data.configSnapshot?.characters || data.gameState?.characters)) {
+        const chars = data.configSnapshot?.characters || Object.values(data.gameState.characters || {});
+        previewHtml += `
+            <div class="import-preview-item">
+                <div class="import-preview-label">👥 角色列表</div>
+                <div class="import-preview-value">
+                    ${chars.map(c => `• ${c.name || c} (${c.career || '未知'})`).join('<br>')}
+                </div>
+            </div>
+        `;
+    }
+
+    previewContent.innerHTML = previewHtml;
+    previewDiv.style.display = 'block';
+}
+
+// 确认导入数据
+function confirmImportData() {
+    if (!window.pendingImportData) {
+        alert('没有待导入的数据');
+        return;
+    }
+
+    try {
+        const data = window.pendingImportData;
+
+        // 检查是否是多个存档汇总格式
+        const isMultipleSaves = Object.keys(data).some(key => key.startsWith('apartment_sim_save_'));
+
+        if (isMultipleSaves) {
+            // 导入多个存档，直接保存到 localStorage
+            console.log('导入多个存档汇总');
+            let importCount = 0;
+            for (const key in data) {
+                if (key.startsWith('apartment_sim_save_')) {
+                    localStorage.setItem(key, JSON.stringify(data[key]));
+                    importCount++;
+                    console.log(`已导入 ${key}`);
+                }
+            }
+
+            // 加载第一个存档到编辑面板（用于预览）
+            const firstKey = Object.keys(data).find(k => k.startsWith('apartment_sim_save_'));
+            const firstSave = data[firstKey];
+
+            if (firstSave.configSnapshot) {
+                setupPanelState.currentConfig = deepClone(firstSave.configSnapshot);
+                if (firstSave.gameState) {
+                    setupPanelState.loadedGameState = deepClone(firstSave.gameState);
+                }
+            } else if (firstSave.gameState) {
+                // 从游戏状态重建配置
+                const gs = firstSave.gameState;
+                const newConfig = deepClone(GAME_PRESETS['default_threegirls'].config);
+
+                if (gs.characters) {
+                    newConfig.characters = Object.values(gs.characters).map((char, idx) => ({
+                        id: char.id || `char_${idx}`,
+                        name: char.name,
+                        color: char.color || '#ff00ff',
+                        gender: char.gender,
+                        age: char.age,
+                        personality: char.personality,
+                        career: char.career,
+                        monthlyIncome: char.monthlyIncome,
+                        careerPrompt: char.careerPrompt || '',
+                        skills: [...(char.skills || [])],
+                        initialStats: {
+                            mood: char.mood || 70,
+                            energy: char.energy || 80,
+                            satiety: char.satiety || 60,
+                            hygiene: char.hygiene || 80,
+                            wallet: char.wallet || 3000
+                        },
+                        initialRelationships: deepClone(char.relationship || {}),
+                        bedroomId: char.bedroomId || `bedroom_${idx}`
+                    }));
+                }
+                setupPanelState.currentConfig = newConfig;
+                setupPanelState.loadedGameState = deepClone(gs);
+            }
+
+            setupPanelState.selectedPreset = null;
+            syncSetupRelationshipValuesFromConfig();
+
+            // 刷新编辑器和存档显示
+            renderPresetCards();
+            renderCharacterEditor();
+            renderRoomEditor();
+            renderSaveSlots();
+
+            // 隐藏预览
+            document.getElementById('import-preview').style.display = 'none';
+            document.getElementById('setup-import-input').value = '';
+
+            alert(`✅ 成功导入 ${importCount} 个存档！`);
+        } else {
+            // 单个存档
+            if (data.configSnapshot) {
+                setupPanelState.currentConfig = deepClone(data.configSnapshot);
+                if (data.gameState) {
+                    setupPanelState.loadedGameState = deepClone(data.gameState);
+                }
+            } else if (data.gameState) {
+                // 从游戏状态重建配置
+                const gs = data.gameState;
+                const newConfig = deepClone(GAME_PRESETS['default_threegirls'].config);
+
+                if (gs.characters) {
+                    newConfig.characters = Object.values(gs.characters).map((char, idx) => ({
+                        id: char.id || `char_${idx}`,
+                        name: char.name,
+                        color: char.color || '#ff00ff',
+                        gender: char.gender,
+                        age: char.age,
+                        personality: char.personality,
+                        career: char.career,
+                        monthlyIncome: char.monthlyIncome,
+                        careerPrompt: char.careerPrompt || '',
+                        skills: [...(char.skills || [])],
+                        initialStats: {
+                            mood: char.mood || 70,
+                            energy: char.energy || 80,
+                            satiety: char.satiety || 60,
+                            hygiene: char.hygiene || 80,
+                            wallet: char.wallet || 3000
+                        },
+                        initialRelationships: deepClone(char.relationship || {}),
+                        bedroomId: char.bedroomId || `bedroom_${idx}`
+                    }));
+                }
+
+                setupPanelState.currentConfig = newConfig;
+                setupPanelState.loadedGameState = deepClone(gs);
+            } else {
+                throw new Error('文件格式不正确，无法识别的数据');
+            }
+
+            setupPanelState.selectedPreset = null;
+            syncSetupRelationshipValuesFromConfig();
+
+            // 保存到第1个存档槽位
+            const saveData = {
+                configSnapshot: deepClone(setupPanelState.currentConfig),
+                gameState: setupPanelState.loadedGameState || {},
+                saveTimestamp: new Date().toLocaleString('zh-CN')
+            };
+
+            localStorage.setItem('apartment_sim_save_1', JSON.stringify(saveData));
+
+            // 刷新编辑器和存档显示
+            renderPresetCards();
+            renderCharacterEditor();
+            renderRoomEditor();
+            renderSaveSlots();
+
+            // 隐藏预览
+            document.getElementById('import-preview').style.display = 'none';
+            document.getElementById('setup-import-input').value = '';
+
+            alert('✅ 配置导入成功！已保存到存档位 1');
+        }
+    } catch (e) {
+        console.error('导入失败:', e);
+        alert(`导入失败: ${e.message}`);
+    }
+}
+
+// 从设置面板开始游戏
+function startGameFromSetup() {
+    // 应用配置
+    activeConfig = setupPanelState.currentConfig;
+    gameState = initGameStateFromConfig(activeConfig);
+
+    // 如果有读取的存档游戏状态，则恢复进度
+    if (setupPanelState.loadedGameState) {
+        const loadedState = setupPanelState.loadedGameState;
+
+        // 恢复游戏时间和进度
+        gameState.startTime = new Date(loadedState.startTime);
+        gameState.currentTime = new Date(loadedState.currentTime);
+        gameState.dayCount = loadedState.dayCount;
+        gameState.timeMultiplier = loadedState.timeMultiplier;
+
+        // 恢复角色状态（全量恢复，包含 currentAction、relationship 等所有字段）
+        // 覆盖前先保存 config 里的静态描述字段，旧存档可能没有这些字段
+        for (const charId in loadedState.characters) {
+            if (gameState.characters[charId]) {
+                const configBackup = {
+                    careerPrompt: gameState.characters[charId].careerPrompt,
+                    personality:  gameState.characters[charId].personality,
+                    career:       gameState.characters[charId].career,
+                    color:        gameState.characters[charId].color,
+                };
+                gameState.characters[charId] = deepClone(loadedState.characters[charId]);
+                const char = gameState.characters[charId];
+                if (!char.careerPrompt) char.careerPrompt = configBackup.careerPrompt || '';
+                if (!char.personality)  char.personality  = configBackup.personality  || '';
+                if (!char.career)       char.career       = configBackup.career       || '';
+                if (!char.color)        char.color        = configBackup.color        || '#ff00ff';
+            }
+        }
+
+        // 兼容性检查与 Date 字段转换（与 loadGame 保持一致）
+        for (const char of Object.values(gameState.characters)) {
+            if (char.status === undefined) char.status = 'awake';
+            if (char.isSleeping === undefined) char.isSleeping = char.status === 'sleeping';
+            if (char.isSleeping && char.status !== 'sleeping') char.status = 'sleeping';
+            if (char.status === 'sleeping' && !char.isSleeping) char.isSleeping = true;
+            if (char.energy <= 0) {
+                char.isSleeping = false;
+                char.status = 'unconscious';
+                char.currentAction = '晕倒中';
+            } else if (char.status === 'unconscious' && char.energy >= 30) {
+                char.status = 'awake';
+            }
+            if (char.status === 'sleeping') {
+                char.currentAction = '在熟睡中...';
+                if (!char.sleepDuration) char.sleepDuration = 0;
+                char.sleepStartTime = char.sleepStartTime ? new Date(char.sleepStartTime) : gameState.currentTime;
+            }
+            if (char.lastDisturbance) char.lastDisturbance = new Date(char.lastDisturbance);
+            if (char.lastRestTime) char.lastRestTime = new Date(char.lastRestTime);
+            if (char.lastWorkCheckTime) char.lastWorkCheckTime = new Date(char.lastWorkCheckTime);
+        }
+
+        // 恢复房间状态和最后行动时间
+        if (loadedState.apartment) gameState.apartment = loadedState.apartment;
+        gameState.lastActionTime = loadedState.lastActionTime ? new Date(loadedState.lastActionTime) : null;
+        gameState.dailyInteractions = loadedState.dailyInteractions || [];
+
+        // 清除临时存档状态
+        setupPanelState.loadedGameState = null;
+    }
+
+    // 应用关系度值到 gameState
+    const chars = setupPanelState.currentConfig.characters || [];
+    for (let i = 0; i < chars.length; i++) {
+        for (let j = 0; j < chars.length; j++) {
+            if (i === j) continue;
+            const relKey = getSetupRelationshipKey(chars[i].id, chars[j].id);
+            const relValue = setupPanelState.relationshipValues[relKey];
+            const char1 = gameState.characters[chars[i].id];
+            const char2 = gameState.characters[chars[j].id];
+            if (char1 && char2) {
+                if (!char1.relationship || typeof char1.relationship !== 'object') {
+                    char1.relationship = {};
+                }
+                char1.relationship[chars[j].id] = relValue ?? 0;
+            }
+        }
+    }
+
+    // 获取API Key
+    const apiKeyInput = document.getElementById('setup-api-key');
+    gameState.apiKey = apiKeyInput.value.trim();
+
+    // 同步API Key到右侧面板的输入框
+    ui.apiKeyInput.value = gameState.apiKey;
+    updateApiKeyStatus();
+
+    // 调试日志
+    if (gameState.apiKey) {
+        console.log('✓ API Key 已从设置面板读取并同步到游戏控制面板');
+    } else {
+        console.log('⚠ 未提供 API Key，将使用模拟模式');
+    }
+
+    // 隐藏设置面板
+    const overlay = document.getElementById('setup-overlay');
+    overlay.classList.add('hidden');
+
+    // 刷新UI和开始游戏
+    updateUI();
+    applyCharacterColors();
+    addLog("公寓生活模拟器已启动！");
+    addLog(`已加载配置：${setupPanelState.selectedPreset ?? '自定义配置'}`);
+
+    // 直接启动游戏循环（避免按钮文字为"重置模拟"时误触 resetGame）
+    ui.startBtn.innerText = "重置模拟";
+    ui.startBtn.disabled = false;
+    ui.apiKeyInput.disabled = true;
+    ui.pauseBtn.disabled = false;
+    gameLoop();
+}
+
+// 页面加载完成时初始化设置面板
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSetupPanel);
+} else {
+    initSetupPanel();
+}
+
+// ===== 游戏中编辑抽屉系统（阶段10）=====
+
+let drawerState = {
+    isOpen: false
+};
+
+// 初始化编辑抽屉
+function initEditDrawer() {
+    const openBtn = document.getElementById('open-editor-btn');
+    const closeBtn = document.getElementById('close-drawer-btn');
+    const drawer = document.getElementById('edit-drawer');
+
+    openBtn.addEventListener('click', () => toggleDrawer());
+    closeBtn.addEventListener('click', () => toggleDrawer());
+
+    // 标签页导航
+    const drawerTabBtns = document.querySelectorAll('.drawer-tab-btn');
+    const drawerContents = document.querySelectorAll('.drawer-content');
+
+    drawerTabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabName = btn.dataset.drawerTab;
+
+            drawerTabBtns.forEach(b => b.classList.remove('active'));
+            drawerContents.forEach(c => c.classList.remove('active'));
+
+            btn.classList.add('active');
+            document.getElementById(`drawer-${tabName}`).classList.add('active');
+
+            // 刷新内容
+            if (tabName === 'chars') {
+                renderDrawerCharacters();
+            } else {
+                renderDrawerRooms();
+            }
+        });
+    });
+
+    // 初始渲染
+    renderDrawerCharacters();
+}
+
+// 切换抽屉
+function toggleDrawer() {
+    const drawer = document.getElementById('edit-drawer');
+    drawerState.isOpen = !drawerState.isOpen;
+
+    if (drawerState.isOpen) {
+        drawer.classList.remove('hidden');
+        drawer.classList.add('visible');
+        renderDrawerCharacters();
+    } else {
+        drawer.classList.remove('visible');
+        setTimeout(() => {
+            drawer.classList.add('hidden');
+        }, 300);
+    }
+}
+
+// 渲染抽屉中的角色编辑器
+function renderDrawerCharacters() {
+    const container = document.getElementById('drawer-chars');
+    container.innerHTML = '';
+
+    for (const [charId, char] of Object.entries(gameState.characters)) {
+        const item = document.createElement('div');
+        item.className = 'drawer-char-item';
+
+        // 构建技能标签
+        let skillsHtml = '<div class="skills-container">';
+        if (char.skills && char.skills.length > 0) {
+            char.skills.forEach((skill, idx) => {
+                skillsHtml += `<span class="skill-tag" onclick="removeSkill('${charId}', ${idx})">${skill} ✕</span>`;
+            });
+        }
+        skillsHtml += '</div>';
+
+        // 构建关系值显示
+        let relationsHtml = '';
+        for (const [otherId, otherChar] of Object.entries(gameState.characters)) {
+            if (otherId !== charId && char.relationship && char.relationship[otherId] !== undefined) {
+                const relValue = char.relationship[otherId];
+                relationsHtml += `
+                    <div class="drawer-field">
+                        <div class="relation-display">
+                            <span>与 ${otherChar.name}：</span>
+                            <input type="range" min="-100" max="100" value="${relValue}"
+                                   oninput="updateRelationship('${charId}', '${otherId}', this.value); this.nextElementSibling.textContent = this.value"
+                                   style="flex: 1; margin: 0 8px; cursor: pointer;" />
+                            <span class="relation-value">${relValue}</span>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        item.innerHTML = `
+            <div class="drawer-item-header">
+                <span>${char.name}</span>
+                <span style="color: ${char.color};">●</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+                <div class="drawer-field">
+                    <div class="drawer-field-label">👤 性别</div>
+                    <select onchange="updateDrawerCharField('${charId}', 'gender', this.value)" style="width: 100%; padding: 6px;">
+                        <option value="male" ${char.gender === 'male' ? 'selected' : ''}>男</option>
+                        <option value="female" ${char.gender === 'female' ? 'selected' : ''}>女</option>
+                    </select>
+                </div>
+                <div class="drawer-field">
+                    <div class="drawer-field-label">🎂 年龄</div>
+                    <input type="number" value="${char.age || 20}" oninput="updateDrawerCharField('${charId}', 'age', parseInt(this.value))" min="1" max="100" style="width: 100%; padding: 6px;" />
+                </div>
+            </div>
+            <div class="drawer-field">
+                <div class="drawer-field-label">🎨 颜色</div>
+                <div style="display: flex; gap: 6px;">
+                    <input type="color" value="${char.color}"
+                           oninput="updateCharColorLive('${charId}', this.value)"
+                           onchange="updateCharColor('${charId}', this.value)"
+                           style="width: 40px; padding: 2px;" />
+                    <input type="text" value="${char.color}" data-color-text="${charId}"
+                           onchange="updateCharColor('${charId}', this.value)"
+                           style="flex: 1;" />
+                </div>
+            </div>
+            <div class="drawer-field">
+                <div class="drawer-field-label">💼 职业</div>
+                <input type="text" value="${char.career || ''}" oninput="updateDrawerCharField('${charId}', 'career', this.value)" style="width: 100%;" />
+            </div>
+            <div class="drawer-field">
+                <div class="drawer-field-label">🧠 性格描述</div>
+                <textarea oninput="updateDrawerCharField('${charId}', 'personality', this.value)" style="width: 100%; height: 70px; resize: vertical; box-sizing: border-box;">${char.personality || ''}</textarea>
+            </div>
+            <div class="drawer-field">
+                <div class="drawer-field-label">📋 工作提示</div>
+                <textarea oninput="updateDrawerCharField('${charId}', 'careerPrompt', this.value)" style="width: 100%; height: 70px; resize: vertical; box-sizing: border-box;">${char.careerPrompt || ''}</textarea>
+            </div>
+            <div class="drawer-field">
+                <div class="drawer-field-label">📚 技能</div>
+                ${skillsHtml}
+                <input type="text" placeholder="输入新技能，按Enter添加" class="skills-input"
+                       onkeypress="if(event.key==='Enter') addSkill('${charId}', this.value); this.value = '';" />
+            </div>
+            ${relationsHtml}
+        `;
+        container.appendChild(item);
+    }
+}
+
+// 更新抽屉中的角色字段（性别、年龄等）
+function updateDrawerCharField(charId, field, value) {
+    const char = gameState.characters[charId];
+    if (char) {
+        char[field] = value;
+        // 同步到配置
+        const configChar = activeConfig.characters.find(c => c.id === charId);
+        if (configChar) configChar[field] = value;
+
+        // 只有在非文本字段时才重新渲染（避免 textarea 输入时频繁渲染）
+        if (field !== 'personality' && field !== 'careerPrompt') {
+            renderDrawerCharacters();
+        }
+    }
+}
+
+// ===== 统一的颜色管理系统 =====
+// 单一入口：设置角色颜色并同步到所有位置
+function setCharacterColor(charId, newColor, options = {}) {
+    const char = gameState.characters[charId];
+    if (!char) return false;
+
+    // 验证颜色格式
+    if (!newColor.match(/^#[0-9a-fA-F]{6}$/)) {
+        console.warn(`Invalid color format: ${newColor}`);
+        return false;
+    }
+
+    char.color = newColor;
+
+    // 同步到activeConfig
+    const configChar = activeConfig.characters.find(c => c.id === charId);
+    if (configChar) configChar.color = newColor;
+
+    // 应用颜色到UI
+    applyCharacterColors();
+
+    // 可选的额外操作
+    if (options.updateTextInput) {
+        const textInput = document.querySelector(`[data-color-text="${charId}"]`);
+        if (textInput) textInput.value = newColor;
+    }
+
+    if (options.rerender) {
+        renderDrawerCharacters();
+    }
+
+    return true;
+}
+
+// 旧接口保留（为了兼容性，但内部调用新函数）
+function updateCharColorLive(charId, newColor) {
+    setCharacterColor(charId, newColor, { updateTextInput: true });
+}
+
+function updateCharColor(charId, newColor) {
+    setCharacterColor(charId, newColor, { updateTextInput: true, rerender: true });
+}
+
+// 添加技能
+function addSkill(charId, skill) {
+    if (!skill.trim()) return;
+    const char = gameState.characters[charId];
+    if (char && !char.skills.includes(skill)) {
+        char.skills.push(skill);
+        // 同步到配置
+        const configChar = activeConfig.characters.find(c => c.id === charId);
+        if (configChar && !configChar.skills.includes(skill)) {
+            configChar.skills.push(skill);
+        }
+        addLog(`${char.name} 获得了新技能：【${skill}】`, 'system', char.name);
+        renderDrawerCharacters();
+    }
+}
+
+// 删除技能
+function removeSkill(charId, skillIdx) {
+    const char = gameState.characters[charId];
+    if (char && char.skills[skillIdx]) {
+        const skill = char.skills[skillIdx];
+        char.skills.splice(skillIdx, 1);
+        // 同步到配置
+        const configChar = activeConfig.characters.find(c => c.id === charId);
+        if (configChar) {
+            const cfgIdx = configChar.skills.indexOf(skill);
+            if (cfgIdx >= 0) configChar.skills.splice(cfgIdx, 1);
+        }
+        addLog(`${char.name} 失去了技能：【${skill}】`, 'system', char.name);
+        renderDrawerCharacters();
+    }
+}
+
+// 更新角色间关系值
+function updateRelationship(fromId, toId, value) {
+    const char = gameState.characters[fromId];
+    if (char && char.relationship) {
+        char.relationship[toId] = parseInt(value);
+        // 同步到配置
+        const configChar = activeConfig.characters.find(c => c.id === fromId);
+        if (configChar && configChar.initialRelationships) {
+            configChar.initialRelationships[toId] = parseInt(value);
+        }
+        // 只在完成拖动时重新渲染（不是每次 oninput 都渲染）
+        // 实时修改已同步到状态，AI 调用时会用到最新值
+    }
+}
+
+// 渲染抽屉中的房间编辑器
+function renderDrawerRooms() {
+    const container = document.getElementById('drawer-rooms');
+    container.innerHTML = '';
+
+    for (const [roomId, room] of Object.entries(gameState.apartment.rooms)) {
+        const item = document.createElement('div');
+        item.className = 'drawer-room-item';
+
+        item.innerHTML = `
+            <div class="drawer-item-header">
+                <span>${room.name}</span>
+            </div>
+            <div class="drawer-field">
+                <div class="drawer-field-label">📍 房间ID</div>
+                <input type="text" value="${roomId}" readonly style="background: #333; cursor: not-allowed;" />
+            </div>
+            <div class="drawer-field">
+                <div class="drawer-field-label">📝 描述</div>
+                <input type="text" value="${room.description}" onchange="updateRoomDescription('${roomId}', this.value)" placeholder="房间描述" />
+            </div>
+            <div class="drawer-field">
+                <div class="drawer-field-label">📦 物品 (${(room.items || []).length})</div>
+                <div style="margin: 4px 0; font-size: 11px; color: #888;">
+                    ${(room.items || []).map((item, idx) => `
+                        <div style="display: flex; justify-content: space-between; padding: 2px 0;">
+                            <span>${item}</span>
+                            <button onclick="removeRoomItem('${roomId}', ${idx})" style="background: none; border: none; color: #ff3333; cursor: pointer; font-size: 10px;">删除</button>
+                        </div>
+                    `).join('')}
+                </div>
+                <input type="text" placeholder="输入新物品，按Enter添加"
+                       onkeypress="if(event.key==='Enter') addRoomItem('${roomId}', this.value); this.value = '';"
+                       style="margin-top: 4px;" />
+            </div>
+        `;
+        container.appendChild(item);
+    }
+}
+
+// 更新房间描述
+function updateRoomDescription(roomId, desc) {
+    const room = gameState.apartment.rooms[roomId];
+    if (room) {
+        room.description = desc;
+    }
+}
+
+// 添加房间物品
+function addRoomItem(roomId, item) {
+    if (!item.trim()) return;
+    const room = gameState.apartment.rooms[roomId];
+    if (room && !room.items.includes(item)) {
+        room.items.push(item);
+        // 同步到配置
+        const configRoom = activeConfig.rooms.find(r => r.id === roomId);
+        if (configRoom && !configRoom.items.includes(item)) {
+            configRoom.items.push(item);
+        }
+        renderDrawerRooms();
+    }
+}
+
+// 删除房间物品
+function removeRoomItem(roomId, itemIdx) {
+    const room = gameState.apartment.rooms[roomId];
+    if (room && room.items[itemIdx]) {
+        room.items.splice(itemIdx, 1);
+        // 同步到配置
+        const configRoom = activeConfig.rooms.find(r => r.id === roomId);
+        if (configRoom && configRoom.items[itemIdx]) {
+            configRoom.items.splice(itemIdx, 1);
+        }
+        renderDrawerRooms();
+    }
+}
+
+// 页面加载时初始化编辑抽屉
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(initEditDrawer, 500);
+    });
+} else {
+    initEditDrawer();
+}
+
+// ==================== 作品提示词记录弹窗 ====================
+const ARTWORK_LOG_KEY = 'artwork_prompt_log';
+const ARTWORK_LOG_MAX = 50;
+
+function openArtworkLogModal() {
+    const modal = document.getElementById('artwork-log-modal');
+    modal.style.display = 'flex';
+    renderArtworkLog();
+}
+
+function closeArtworkLogModal() {
+    document.getElementById('artwork-log-modal').style.display = 'none';
+}
+
+function renderArtworkLog() {
+    const list = document.getElementById('artwork-log-list');
+    const log = JSON.parse(localStorage.getItem(ARTWORK_LOG_KEY) || '[]');
+
+    if (log.length === 0) {
+        list.innerHTML = '<div style="color:#666; text-align:center; padding:40px 0; font-size:13px;">暂无作品记录</div>';
+        return;
+    }
+
+    list.innerHTML = '';
+    // 最新的显示在最前面
+    [...log].reverse().forEach((item, reversedIdx) => {
+        const realIdx = log.length - 1 - reversedIdx;
+        const card = document.createElement('div');
+        card.style.cssText = 'background:#2a2a3e; border:1px solid #3a3a5a; border-radius:6px; padding:12px 14px;';
+        card.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+                <div>
+                    <span style="color:#b0d4f1; font-weight:bold; font-size:13px;">${item.charName}</span>
+                    <span style="color:#ccc; font-size:13px; margin-left:6px;">${item.title ? '《' + item.title + '》' : '（无标题）'}</span>
+                    <span style="color:#666; font-size:11px; margin-left:8px;">${item.type || ''} · 第${item.day || 1}天 ${item.gameTime || ''}</span>
+                </div>
+                <div style="display:flex; gap:6px; flex-shrink:0; margin-left:10px;">
+                    <button onclick="copyArtworkEntry(${realIdx})" style="padding:3px 9px; background:#3a5a3a; color:#aeffae; border:none; border-radius:3px; cursor:pointer; font-size:11px;">复制</button>
+                    <button onclick="deleteArtworkEntry(${realIdx})" style="padding:3px 9px; background:#5a3a3a; color:#ffaeae; border:none; border-radius:3px; cursor:pointer; font-size:11px;">删除</button>
+                </div>
+            </div>
+            ${item.description ? `<div style="color:#aaa; font-size:12px; margin-bottom:6px;">${item.description}</div>` : ''}
+            <div style="color:#e0e0e0; font-size:11px; background:#1a1a2e; border-radius:4px; padding:7px 10px; margin-bottom:4px; word-break:break-all;">${item.prompt || ''}</div>
+            ${item.negativePrompt ? `<div style="color:#999; font-size:11px; background:#1a1a2e; border-radius:4px; padding:5px 10px; word-break:break-all;">Negative: ${item.negativePrompt}</div>` : ''}
+        `;
+        list.appendChild(card);
+    });
+}
+
+function deleteArtworkEntry(idx) {
+    const log = JSON.parse(localStorage.getItem(ARTWORK_LOG_KEY) || '[]');
+    log.splice(idx, 1);
+    localStorage.setItem(ARTWORK_LOG_KEY, JSON.stringify(log));
+    renderArtworkLog();
+}
+
+function copyArtworkEntry(idx) {
+    const log = JSON.parse(localStorage.getItem(ARTWORK_LOG_KEY) || '[]');
+    const item = log[idx];
+    if (!item) return;
+    const text = [
+        item.title ? `作品：${item.title}` : '',
+        item.description ? `描述：${item.description}` : '',
+        `Prompt: ${item.prompt}`,
+        item.negativePrompt ? `Negative: ${item.negativePrompt}` : '',
+        item.style ? `Style: ${item.style}` : ''
+    ].filter(Boolean).join('\n');
+    navigator.clipboard.writeText(text).catch(() => {});
+}
+
+function exportArtworkLog() {
+    const log = JSON.parse(localStorage.getItem(ARTWORK_LOG_KEY) || '[]');
+    if (log.length === 0) return;
+    const lines = log.map((item, i) => [
+        `=== 第${i + 1}条 | ${item.charName} | ${item.title ? '《' + item.title + '》' : '无标题'} | 第${item.day || 1}天 ===`,
+        item.description ? `描述：${item.description}` : '',
+        `Prompt: ${item.prompt}`,
+        item.negativePrompt ? `Negative: ${item.negativePrompt}` : '',
+        item.style ? `Style: ${item.style}` : '',
+        ''
+    ].filter(s => s !== undefined && !(s === '' && !item.description)).join('\n'));
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'artwork_prompts.txt';
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+
+function clearArtworkLog() {
+    if (!confirm('确定清空所有作品提示词记录吗？')) return;
+    localStorage.removeItem(ARTWORK_LOG_KEY);
+    renderArtworkLog();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('open-artwork-log-btn').addEventListener('click', openArtworkLogModal);
+    document.getElementById('close-artwork-log-btn').addEventListener('click', closeArtworkLogModal);
+    document.getElementById('artwork-log-export-btn').addEventListener('click', exportArtworkLog);
+    document.getElementById('artwork-log-clear-btn').addEventListener('click', clearArtworkLog);
+    document.getElementById('artwork-log-modal').addEventListener('click', e => {
+        if (e.target === e.currentTarget) closeArtworkLogModal();
+    });
+    initModelToggle();
+
+    // 尝试加载自动存档
+    const autoSaveLoaded = tryLoadAutoSaveOnStartup();
+    if (autoSaveLoaded) {
+        console.log('✅ 自动存档已加载，游戏状态已恢复');
+        // 更新UI
+        updateUI();
+        applyCharacterColors();
+        // 游戏保持暂停状态，等待用户点击"开始模拟"
+    }
+});

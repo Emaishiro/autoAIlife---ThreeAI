@@ -1,5 +1,12 @@
 * {
     box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html {
+    height: 100%;
+    height: 100dvh;
+    overflow: hidden;
 }
 
 body {
@@ -7,13 +14,15 @@ body {
     color: #00ff41;
     font-family: 'Courier New', Courier, monospace;
     margin: 0;
-    padding: 10px;
+    padding: 8px;
     display: flex;
     justify-content: center;
     align-items: center;
-    overflow: hidden; /* 防止浏览器出现双滚动条 */
+    overflow: hidden;
     width: 100vw;
-    height: 100vh;
+    height: 100%;
+    min-height: 100vh;
+    touch-action: manipulation;
 }
 
 #game-container {
@@ -29,6 +38,7 @@ body {
     height: 100%;
     max-height: 100%;
     align-items: stretch;
+    overflow: hidden;
 }
 
 header {
@@ -145,21 +155,49 @@ header h1 {
     font-size: 1.1em;
 }
 
-#game-log {
-    /* 移除固定高度，让内容自然撑开触发父级滚动 */
-}
 
 .log-entry {
     margin-bottom: 10px;
-    border-left: 2px solid #00ff41;
+    border-left: 3px solid #00ff41;
     padding-left: 10px;
     animation: fadeIn 0.5s;
+    color: #00ff41;
 }
 
+/* 系统信息 - 白色 */
+.log-entry.system {
+    color: #ffffff;
+    border-left-color: #ffffff;
+}
+
+/* 角色颜色 */
+.log-entry.character-huiwu {
+    color: #00d4ff;
+    border-left-color: #00d4ff;
+}
+
+.log-entry.character-sanjiu {
+    color: #ff79c6;
+    border-left-color: #ff79c6;
+}
+
+.log-entry.character-wuyue {
+    color: #ffb86c;
+    border-left-color: #ffb86c;
+}
+
+/* 其他日志类型 */
 .thought {
     color: #666;
     font-style: italic;
-    border-left-color: #444;
+    border-left: 2px solid #444;
+    padding-left: 10px;
+    margin-bottom: 10px;
+}
+
+.narrative {
+    color: #00ff41;
+    border-left: 3px solid #00ff41;
 }
 
 .artwork {
@@ -183,20 +221,45 @@ header h1 {
 
 .environment {
     color: #00d4ff;
-    border-left-color: #00d4ff;
+    border-left: 3px solid #00d4ff;
     background: rgba(0, 212, 255, 0.05);
     padding: 5px 10px;
 }
 
+.action {
+    color: #50fa7b;
+    border-left: 3px solid #50fa7b;
+}
+
+.result {
+    color: #8be9fd;
+    border-left: 3px solid #8be9fd;
+}
+
+.interaction {
+    color: #bd93f9;
+    border-left: 3px solid #bd93f9;
+}
+
+.warning {
+    color: #ffb86c;
+    border-left: 3px solid #ffb86c;
+}
+
+.error {
+    color: #ff5555;
+    border-left: 3px solid #ff5555;
+}
+
 .npc {
     color: #bc13fe;
-    border-left-color: #bc13fe;
+    border-left: 3px solid #bc13fe;
     font-weight: bold;
 }
 
 .progress {
-    color: #ffca28;
-    border-left-color: #ffca28;
+    color: #062aa0;
+    border-left-color: #062aa0;
 }
 
 .progress::after {
@@ -235,6 +298,29 @@ header h1 {
     gap: 10px;
 }
 
+.model-btn {
+    flex: 1;
+    padding: 5px 8px;
+    font-size: 0.8em;
+    background: #1a1a2e;
+    color: #888;
+    border: 1px solid #333;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.model-btn.active {
+    background: #00d4ff22;
+    color: #00d4ff;
+    border-color: #00d4ff;
+}
+
+.model-btn:hover:not(.active) {
+    border-color: #555;
+    color: #aaa;
+}
+
 #time-control {
     margin-top: 20px;
     display: flex;
@@ -251,16 +337,23 @@ input[type="password"] {
     background: #000;
     border: 1px solid #00ff41;
     color: #00ff41;
-    padding: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+    border-radius: 4px;
+    width: 100%;
 }
 
 button {
     background: #00ff41;
     color: #000;
     border: none;
-    padding: 10px;
+    padding: 12px 16px;
     font-weight: bold;
     cursor: pointer;
+    border-radius: 4px;
+    touch-action: manipulation;
+    -webkit-appearance: none;
+    appearance: none;
 }
 
 button:hover {
@@ -272,6 +365,18 @@ button:hover {
     to { opacity: 1; transform: translateY(0); }
 }
 
+#save-transfer {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+}
+
+#save-transfer button {
+    width: auto;
+    min-width: 140px;
+}
+
 /* 平板和大屏幕（1200px 以上）：三列布局 */
 @media (min-width: 1200px) {
     #game-container {
@@ -280,7 +385,7 @@ button:hover {
 }
 
 /* 中等屏幕（768px - 1199px）：两列布局 */
-@media (max-width: 1199px) {
+@media (max-width: 1199px) and (min-width: 768px) {
     #game-container {
         grid-template-areas:
             "header header"
@@ -301,6 +406,10 @@ button:hover {
         min-width: 200px;
     }
 
+    #api-config input {
+        width: 100%;
+    }
+
     #time-control {
         flex: 1;
         min-width: 200px;
@@ -310,36 +419,212 @@ button:hover {
 /* 小屏幕（小于 768px）：单列布局 */
 @media (max-width: 767px) {
     body {
-        padding: 5px;
+        padding: 4px;
+        padding-bottom: calc(4px + env(safe-area-inset-bottom));
     }
 
     #game-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto 3fr 1fr;
         grid-template-areas:
-            "header"
-            "game-state"
-            "log"
-            "control";
-        grid-template-columns: 1fr;
-        grid-template-rows: auto auto auto auto;
+            "header header"
+            "game-state log"
+            "control control";
+        gap: 6px;
+        height: 100%;
+        height: 100dvh;
+        overflow: hidden;
+    }
+
+    header {
+        grid-area: header;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+        padding: 6px 0;
+    }
+
+    header h1 {
+        font-size: 1em;
+        width: 100%;
+    }
+
+    #status-bar {
+        width: 100%;
+        font-size: 0.7em;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
+    #status-bar span {
+        margin-left: 0;
     }
 
     #main-content {
-        max-height: 50vh;
+        grid-area: game-state;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    #apartment-section, #characters-section {
+        flex: 1;
+        padding: 6px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        min-height: 0;
+    }
+
+    #apartment-section h2, #characters-section h2 {
+        font-size: 0.85em;
+        margin: 0 0 6px 0;
     }
 
     #log-section {
-        max-height: 40vh;
+        grid-area: log;
+        padding: 6px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        min-height: 0;
+    }
+
+    #log-section h2 {
+        font-size: 0.85em;
+        margin: 0 0 6px 0;
     }
 
     #info-panel {
+        grid-area: control;
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 6px;
+        padding: 6px;
+        padding-bottom: calc(6px + env(safe-area-inset-bottom));
+        min-height: 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    #info-panel h3 {
+        width: 100%;
+        font-size: 0.8em;
+        margin: 0;
+    }
+
+    #api-config {
+        width: 100%;
+    }
+
+    #api-config input[type="password"] {
+        width: 100%;
+        font-size: 16px;
+        padding: 8px;
+    }
+
+    #api-config button {
+        width: 100%;
+        padding: 8px 6px;
+        font-size: 0.8em;
     }
 
     #time-control {
+        width: 100%;
         display: grid;
         grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+    }
+
+    #time-control button {
+        padding: 8px 4px;
+        font-size: 0.75em;
+        min-height: 36px;
+    }
+
+    #save-slots {
+        width: 100%;
+    }
+
+    #save-transfer {
+        width: 100%;
+    }
+
+    #save-transfer button {
+        width: 100%;
+        padding: 8px 4px;
+        font-size: 0.75em;
+        min-height: 36px;
+    }
+
+    button {
+        padding: 8px 10px;
+        font-size: 13px;
+        min-height: 36px;
+        touch-action: manipulation;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+
+    .save-slot {
+        padding: 5px;
+        font-size: 0.75em;
+    }
+
+    .save-slot span {
+        font-size: 0.9em;
+    }
+
+    .save-btns {
+        gap: 3px;
+    }
+
+    .save-btns button {
+        padding: 6px 3px;
+        min-height: 32px;
+        font-size: 0.75em;
+    }
+
+    #save-transfer {
+        width: 100%;
+        display: flex;
+        gap: 3px;
+    }
+
+    #save-transfer button {
+        flex: 1;
+        padding: 6px 3px;
+        font-size: 0.7em;
+        min-height: 32px;
+    }
+
+    .room-card, .character-card {
+        padding: 6px;
+    }
+
+    .room-card h4, .character-card h4 {
+        font-size: 0.8em;
+        padding-bottom: 3px;
+        margin-bottom: 3px;
+    }
+
+    .room-occupants, .room-items {
+        font-size: 0.8em;
+        margin-top: 3px;
+    }
+
+    .stats {
+        gap: 3px;
+        margin: 5px 0;
+    }
+
+    .stat {
+        padding: 2px 5px;
+        font-size: 0.75em;
+    }
+
+    #save-slots {
         gap: 5px;
     }
 }
@@ -445,4 +730,648 @@ button:hover {
 .save-btns button:last-child:hover:not(:disabled) {
     background: #00ff41;
     color: #000;
+}
+
+/* ===== 游戏前设置面板样式（阶段9）===== */
+
+.setup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-family: 'Courier New', monospace;
+    opacity: 1;
+    transition: opacity 0.3s ease;
+    pointer-events: auto;
+}
+
+.setup-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.setup-panel {
+    background: #1a1a1a;
+    border: 2px solid #00ff41;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 900px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 0 30px rgba(0, 255, 65, 0.3);
+}
+
+.setup-header {
+    background: linear-gradient(135deg, #0d0d0d 0%, #1a3a1a 100%);
+    padding: 24px;
+    border-bottom: 1px solid #00ff41;
+    text-align: center;
+}
+
+.setup-header h1 {
+    margin: 0;
+    color: #00ff41;
+    font-size: 28px;
+    margin-bottom: 8px;
+}
+
+.setup-header p {
+    margin: 0;
+    color: #888;
+    font-size: 14px;
+}
+
+.setup-tabs {
+    display: flex;
+    border-bottom: 1px solid #333;
+    background: #0d0d0d;
+}
+
+.setup-tab-btn {
+    flex: 1;
+    padding: 16px;
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.3s ease;
+    border-bottom: 2px solid transparent;
+}
+
+.setup-tab-btn:hover {
+    color: #00ff41;
+}
+
+.setup-tab-btn.active {
+    color: #00ff41;
+    border-bottom-color: #00ff41;
+    background: rgba(0, 255, 65, 0.05);
+}
+
+.setup-tab-btn .tab-icon {
+    font-size: 18px;
+}
+
+.setup-tab-content {
+    display: none;
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+    background: #0d0d0d;
+}
+
+.setup-tab-content.active {
+    display: block;
+}
+
+/* 预设卡片 */
+.preset-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+}
+
+.preset-card {
+    border: 2px solid #333;
+    border-radius: 6px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: #1a1a1a;
+}
+
+.preset-card:hover {
+    border-color: #00ff41;
+    box-shadow: 0 0 15px rgba(0, 255, 65, 0.2);
+}
+
+.preset-card.selected {
+    border-color: #00ff41;
+    background: rgba(0, 255, 65, 0.05);
+}
+
+.preset-card-title {
+    font-weight: bold;
+    color: #00ff41;
+    margin-bottom: 8px;
+}
+
+.preset-card-desc {
+    color: #888;
+    font-size: 12px;
+}
+
+/* 角色和房间编辑 */
+.char-controls, .room-controls {
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.char-limit-text, .room-limit-text {
+    color: #888;
+    font-size: 12px;
+    margin: 0;
+}
+
+.btn-primary {
+    background: #00ff41;
+    color: #000;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+    background: #00cc33;
+}
+
+.btn-primary:disabled {
+    background: #333;
+    color: #888;
+    cursor: not-allowed;
+}
+
+.char-editor-item, .room-editor-item {
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 12px;
+    background: #1a1a1a;
+}
+
+.char-editor-item input, .char-editor-item textarea,
+.room-editor-item input, .room-editor-item textarea {
+    width: 100%;
+    padding: 8px;
+    background: #0d0d0d;
+    border: 1px solid #333;
+    color: #00ff41;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+}
+
+.char-editor-item input:focus, .char-editor-item textarea:focus,
+.room-editor-item input:focus, .room-editor-item textarea:focus {
+    outline: none;
+    border-color: #00ff41;
+}
+
+.editor-field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.editor-field-label {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 4px;
+}
+
+.editor-field-group {
+    margin-bottom: 12px;
+}
+
+.btn-remove {
+    background: #ff3333;
+    color: #fff;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.3s ease;
+}
+
+.btn-remove:hover {
+    background: #ff5555;
+}
+
+/* 页脚 */
+.setup-footer {
+    padding: 20px 24px;
+    border-top: 1px solid #333;
+    background: #1a1a1a;
+}
+
+.api-key-input-group {
+    margin-bottom: 16px;
+}
+
+.api-key-input-group input {
+    width: 100%;
+    padding: 12px;
+    background: #0d0d0d;
+    border: 1px solid #333;
+    color: #00ff41;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+}
+
+.api-key-input-group input:focus {
+    outline: none;
+    border-color: #00ff41;
+}
+
+.setup-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.btn-start {
+    flex: 1;
+    background: #00ff41;
+    color: #000;
+    border: none;
+    padding: 14px;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    font-family: 'Courier New', monospace;
+}
+
+.btn-start:hover {
+    background: #00cc33;
+    box-shadow: 0 0 15px rgba(0, 255, 65, 0.3);
+}
+
+.btn-start:disabled {
+    background: #333;
+    color: #888;
+    cursor: not-allowed;
+}
+
+/* 颜色选择器 */
+.color-input-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.color-picker {
+    width: 50px;
+    height: 34px;
+    border: 1px solid #333;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.color-code {
+    flex: 1;
+    background: #0d0d0d;
+    border: 1px solid #333;
+    color: #00ff41;
+    padding: 8px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+}
+
+/* ===== 游戏中编辑抽屉样式（阶段10）===== */
+
+.edit-drawer {
+    position: fixed;
+    right: -400px;
+    top: 0;
+    width: 400px;
+    height: 100%;
+    background: #1a1a1a;
+    border-left: 2px solid #00ff41;
+    z-index: 999;
+    display: flex;
+    flex-direction: column;
+    transition: right 0.3s ease;
+    box-shadow: -5px 0 20px rgba(0, 0, 0, 0.5);
+    font-family: 'Courier New', monospace;
+}
+
+.edit-drawer.visible {
+    right: 0;
+}
+
+.edit-drawer.hidden {
+    display: none;
+}
+
+.drawer-header {
+    background: linear-gradient(135deg, #0d0d0d 0%, #1a3a1a 100%);
+    padding: 16px;
+    border-bottom: 1px solid #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.drawer-header h3 {
+    margin: 0;
+    color: #00ff41;
+    font-size: 16px;
+}
+
+.close-btn {
+    background: transparent;
+    border: none;
+    color: #00ff41;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.close-btn:hover {
+    color: #fff;
+}
+
+.drawer-tabs {
+    display: flex;
+    border-bottom: 1px solid #333;
+    background: #0d0d0d;
+}
+
+.drawer-tab-btn {
+    flex: 1;
+    padding: 12px;
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    transition: all 0.3s ease;
+    border-bottom: 2px solid transparent;
+}
+
+.drawer-tab-btn:hover {
+    color: #00ff41;
+}
+
+.drawer-tab-btn.active {
+    color: #00ff41;
+    border-bottom-color: #00ff41;
+    background: rgba(0, 255, 65, 0.05);
+}
+
+.drawer-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: none;
+}
+
+.drawer-content.active {
+    display: block;
+}
+
+.drawer-char-item,
+.drawer-room-item {
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: #0d0d0d;
+}
+
+.drawer-item-header {
+    color: #00ff41;
+    font-weight: bold;
+    font-size: 12px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.drawer-field {
+    margin-bottom: 8px;
+}
+
+.drawer-field-label {
+    font-size: 10px;
+    color: #888;
+    margin-bottom: 2px;
+}
+
+.drawer-field input,
+.drawer-field select {
+    width: 100%;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #00ff41;
+    padding: 4px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+}
+
+.drawer-field input:focus,
+.drawer-field select:focus {
+    outline: none;
+    border-color: #00ff41;
+    box-shadow: 0 0 5px rgba(0, 255, 65, 0.2);
+}
+
+.skill-tag {
+    display: inline-block;
+    background: #00ff41;
+    color: #000;
+    padding: 3px 8px;
+    border-radius: 12px;
+    margin: 2px;
+    font-size: 11px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.skill-tag:hover {
+    background: #ff3333;
+}
+
+.skills-container {
+    margin: 6px 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.skills-input {
+    width: 100% !important;
+    box-sizing: border-box;
+    margin-top: 4px;
+}
+
+.relation-display {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: #888;
+}
+
+.relation-value {
+    color: #00ff41;
+    font-weight: bold;
+}
+
+@media (max-width: 1024px) {
+    .edit-drawer {
+        width: 100%;
+        right: -100%;
+    }
+}
+
+/* ===== 设置面板中的存档槽位 ===== */
+
+.setup-save-slots {
+    display: grid;
+    gap: 12px;
+}
+
+.setup-save-slot {
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 12px;
+    background: #0d0d0d;
+    transition: all 0.3s ease;
+}
+
+.setup-save-slot:hover {
+    border-color: #00ff41;
+}
+
+.setup-save-slot.empty {
+    opacity: 0.5;
+}
+
+.setup-save-slot-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.setup-save-slot-title {
+    color: #00ff41;
+    font-weight: bold;
+    font-size: 13px;
+}
+
+.setup-save-slot-time {
+    color: #888;
+    font-size: 11px;
+}
+
+.setup-save-slot-info {
+    color: #888;
+    font-size: 11px;
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+
+.setup-save-slot-info strong {
+    color: #00ff41;
+}
+
+.setup-save-slot-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.setup-save-slot-actions button {
+    flex: 1;
+    padding: 6px 8px;
+    background: #00ff41;
+    color: #000;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: bold;
+    transition: all 0.2s ease;
+}
+
+.setup-save-slot-actions button:hover {
+    background: #00cc33;
+}
+
+.setup-save-slot-actions button:disabled {
+    background: #333;
+    color: #888;
+    cursor: not-allowed;
+}
+
+.setup-save-slot-actions button.btn-secondary {
+    background: #333;
+    color: #00ff41;
+}
+
+.setup-save-slot-actions button.btn-secondary:hover:not(:disabled) {
+    background: #444;
+}
+
+/* 导入控制 */
+
+.import-controls {
+    background: #0d0d0d;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 12px;
+}
+
+.import-preview {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.import-preview-item {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #333;
+}
+
+.import-preview-item:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.import-preview-label {
+    color: #00ff41;
+    font-weight: bold;
+    font-size: 11px;
+    margin-bottom: 4px;
+}
+
+.import-preview-value {
+    color: #888;
+    font-size: 11px;
 }
