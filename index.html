@@ -36,6 +36,10 @@
                     <span class="tab-icon">💾</span>
                     <span>读取存档</span>
                 </button>
+                <button class="setup-tab-btn" data-tab="world">
+                    <span class="tab-icon">🌐</span>
+                    <span>世界</span>
+                </button>
             </div>
 
             <!-- 预设选择标签页 -->
@@ -86,6 +90,46 @@
                         <div id="import-preview-content"></div>
                         <button id="confirm-import-btn" class="btn-primary" style="width: 100%; margin-top: 12px;">确认导入此配置</button>
                     </div>
+                </div>
+            </div>
+
+            <!-- 世界设定标签页 -->
+            <div class="setup-tab-content" id="tab-world">
+                <div class="world-setting-section">
+                    <h3 style="color: #00ff41; margin-top: 0;">场景名称</h3>
+                    <p style="color: #888; font-size: 12px; margin-bottom: 10px;">AI 提示词中"公寓"的替换词，例如：学校、别墅、公司、太空站…</p>
+                    <input
+                        type="text"
+                        id="sceneNameInput"
+                        placeholder="公寓"
+                        style="width: 100%; box-sizing: border-box; background: #0d0d0d; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; padding: 8px 10px; font-size: 13px;"
+                        oninput="updateSceneName(this.value)"
+                    />
+
+                    <h3 style="color: #00ff41; margin-top: 20px;">故事背景</h3>
+                    <p style="color: #888; font-size: 12px; margin-bottom: 10px;">自由描述这个世界的时代、背景与规则，AI 叙事风格将随之改变。留空则默认现代都市。</p>
+                    <textarea
+                        id="worldSettingInput"
+                        rows="7"
+                        placeholder="示例：赛博朋克近未来城市，科技与贫穷并存，街头霓虹与企业巨塔交相辉映。居民依靠神经接口工作与社交，现实与虚拟的边界已经模糊。&#10;&#10;或：架空仙侠世界，门派林立，灵气复苏百年，修炼者与凡人共居城镇，日常修炼与人情世故并行。"
+                        style="width: 100%; box-sizing: border-box; background: #0d0d0d; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; padding: 10px; font-size: 13px; resize: vertical; font-family: inherit;"
+                        oninput="updateWorldSetting(this.value)"
+                    ></textarea>
+
+                    <h3 style="color: #00ff41; margin-top: 20px;">游戏开始时间</h3>
+                    <p style="color: #888; font-size: 12px; margin-bottom: 10px;">设定游戏世界内的起始时间点。</p>
+                    <input
+                        type="datetime-local"
+                        id="startTimeInput"
+                        value="2025-03-04T08:00"
+                        style="background: #0d0d0d; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; padding: 8px 10px; font-size: 13px; width: 100%; box-sizing: border-box;"
+                        onchange="updateStartTime(this.value)"
+                    />
+
+                    <h3 style="color: #00ff41; margin-top: 20px;">NPC 配角</h3>
+                    <p style="color: #888; font-size: 12px; margin-bottom: 10px;">AI 会在叙事中自然引入这些配角，也可能自行发现新面孔。</p>
+                    <div id="setup-npc-list"></div>
+                    <button onclick="addSetupNPC()" style="margin-top: 8px; padding: 6px 14px; background: #1a3a1a; color: #00ff41; border: 1px solid #00ff41; border-radius: 4px; cursor: pointer; font-size: 12px;">+ 添加配角</button>
                 </div>
             </div>
 
@@ -206,12 +250,18 @@
                 <button class="drawer-tab-btn" data-drawer-tab="rooms">
                     <span>🏠 房间</span>
                 </button>
+                <button class="drawer-tab-btn" data-drawer-tab="world">
+                    <span>🌐 世界</span>
+                </button>
             </div>
             <div class="drawer-content active" id="drawer-chars">
                 <!-- 角色编辑动态生成 -->
             </div>
             <div class="drawer-content hidden" id="drawer-rooms">
                 <!-- 房间编辑动态生成 -->
+            </div>
+            <div class="drawer-content hidden" id="drawer-world">
+                <!-- 世界观编辑动态生成 -->
             </div>
         </div>
     </div>

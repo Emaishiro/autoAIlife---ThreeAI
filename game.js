@@ -17,9 +17,16 @@ function deepClone(obj) {
     }
 }
 
+function escapeAttr(str) {
+    return String(str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
 // 主游戏配置对象
 const GAME_CONFIG = {
     version: "2.0",
+    worldSetting: "",
+    sceneName: "公寓",
+    npcs: [],
     characters: [
         {
             id: "huiwu",  // 保留原ID以维持代码兼容性
@@ -173,6 +180,9 @@ const GAME_PRESETS = {
         description: "从零开始自定义角色和房间",
         config: {
             version: "2.0",
+            worldSetting: "",
+            sceneName: "公寓",
+            npcs: [],
             characters: [],
             rooms: [
                 {
@@ -1421,9 +1431,20 @@ function buildSystemPrompt() {
     const charCount = chars.length;
     const actionCountText = charCount === 1 ? '一个' : charCount === 2 ? '两个' : charCount === 3 ? '三个' : charCount.toString();
 
-    const systemPrompt = `你是一位文学素养极高的生活模拟游戏叙事者，负责为公寓里${actionCountText}位角色生成日常生活行为。
+    const worldBlock = activeConfig.worldSetting
+        ? `【世界观设定】\n${activeConfig.worldSetting}\n\n`
+        : '';
 
-【角色性格设定】
+    const npcList = (activeConfig.npcs || []);
+    const npcBlock = npcList.length > 0
+        ? `【NPC配角】\n以下是场景中可能出现的配角，可自然地将他们写入叙事和角色行为中：\n${npcList.map(n => `- ${n.name}（${n.role}）${n.note ? '：' + n.note : ''}`).join('\n')}\n如果行为中遇到了尚未记录的陌生人，可通过 new_npcs 字段将其加入配角列表。\n\n`
+        : `【NPC配角】\n场景中暂无预设配角。如果行为中自然出现了有意义的陌生人（邻居、同事、快递员等），可通过 new_npcs 字段记录他们。\n\n`;
+
+    const sceneName = activeConfig.sceneName || '公寓';
+
+    const systemPrompt = `你是一位文学素养极高的生活模拟游戏叙事者，负责为${sceneName}里${actionCountText}位角色生成日常生活行为。
+
+${worldBlock}${npcBlock}【角色性格设定】
 ${charDescriptions}
 
 【职业行为规范——生成action时必须参考】
@@ -1432,7 +1453,7 @@ ${careerRules}
 【性别代词】
 ${pronounRules}
 
-【场景设定】多人公寓，房间 ID 如下：
+【场景设定】${sceneName}，房间 ID 如下：
 ${roomList}
 
 【写作风格要求——极为重要】
@@ -1464,9 +1485,11 @@ ${roomList}
    - "actionType": 行为类型（primary_work|secondary_work|daily_life|leisure|rest|social）
    - "workOutput": （可选）创作成果，结构：{ "title": "作品名", "type": "illustration|food_photo|video", "description": "30字内描述" }
    - "skill_changes": （可选）技能变化，结构：{ "learn": ["新技能"], "forget": ["失去的技能"] }，仅当角色通过本次行为确实学到或失去了技能时填写
+   - "purchases": （可选）购买并添置到房间的物品，结构：[{"item": "物品名称", "room": "房间英文ID", "cost": 价格数字}]。规则：①仅当角色确实去购物或网购时才填写；②cost 必须从 wallet 中扣除（stat_changes.wallet 不需要再重复扣）；③余额不足时不得购买；④物品要符合角色性格、职业和所在房间用途；⑤价格参考：日用品5-50，食材10-100，家居小物件50-500，电子产品500-5000，家具200-3000
 
 2. "narrative": 散文化场景叙述（80-150字）
 3. "time_passed": 游戏时间流逝分钟数
+4. "new_npcs": （可选）本轮行为中自然出现的新配角，数组，每项：{"name": "姓名或称呼", "role": "身份/职业", "note": "与角色的关系或特点"}。仅当确实出现了有意义的新面孔时填写，不要强行创造。
 
 严格返回JSON，不含任何额外文字。`;
 
@@ -2220,7 +2243,7 @@ async function gameLoop() {
     const actionPrompt = `当前游戏时间：${timeInfo.fullInfo}
 ${holidayInfoText}
 
-公寓房间状态（必须使用英文 ID 作为移动目标）：
+${activeConfig.sceneName || '公寓'}房间状态（必须使用英文 ID 作为移动目标）：
 ${Object.entries(gameState.apartment.rooms).map(([id, room]) =>
     `- ${id} (${room.name}): ${room.description} (物品: ${room.items.join(', ')})`
 ).join('\n')}
@@ -2300,7 +2323,12 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
 - 做饭菜肴：红烧肉、蒜蓉西兰花、番茄炒蛋等各种菜肴
 每次生成含食物的行为，必须具体点名食物，且与前几轮不重复。
 
-严格返回要求的 JSON 格式。`;
+严格返回要求的 JSON 格式。${(() => {
+    const npcs = activeConfig.npcs || [];
+    if (npcs.length === 0 || Math.random() > 0.35) return '';
+    const npc = npcs[Math.floor(Math.random() * npcs.length)];
+    return `\n\n【NPC互动提示（可选）】今天${npc.name}（${npc.role}）可能会出现，可以安排一次自然的互动，让 ta 带来一条消息或引发一个小事件。`;
+})()}`;
 
     // 在调用 AI 前，先根据属性计算角色的心情值
     updateCharactersMood();
@@ -2388,6 +2416,22 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
                 char.satiety = Math.max(0, Math.min(100, char.satiety + (action.stat_changes.satiety || 0)));
                 char.hygiene = Math.max(0, Math.min(100, char.hygiene + (action.stat_changes.hygiene || 0)));
                 char.wallet = Math.max(0, char.wallet + (action.stat_changes.wallet || 0));
+            }
+
+            // 处理购物（添置物品到房间）
+            if (Array.isArray(action.purchases) && action.purchases.length > 0) {
+                for (const purchase of action.purchases) {
+                    if (!purchase.item || !purchase.room || typeof purchase.cost !== 'number') continue;
+                    const targetRoom = gameState.apartment.rooms[purchase.room];
+                    if (!targetRoom) continue;
+                    if (char.wallet < purchase.cost) {
+                        addLog(`${char.name}想买${purchase.item}，但余额不足（¥${char.wallet}）`, 'system');
+                        continue;
+                    }
+                    char.wallet = Math.max(0, char.wallet - purchase.cost);
+                    addRoomItem(purchase.room, purchase.item);
+                    addLog(`${char.name}花费 ¥${purchase.cost} 购入了「${purchase.item}」，放在${targetRoom.name}。余额：¥${char.wallet}`, 'system');
+                }
             }
 
             // 处理技能变化（阶段5）
@@ -2524,6 +2568,24 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
                         targetChar.currentRoom = action.new_room;
                         addLog(`${char.name}将晕倒的${targetName}移动到${gameState.apartment.rooms[action.new_room]?.name || action.new_room}`, 'system');
                     }
+                }
+            }
+        }
+
+        // 处理 AI 新增的 NPC
+        if (Array.isArray(decision.new_npcs)) {
+            activeConfig.npcs = activeConfig.npcs || [];
+            for (const n of decision.new_npcs) {
+                if (!n.name || !n.role) continue;
+                const exists = activeConfig.npcs.some(existing => existing.name === n.name);
+                if (!exists) {
+                    activeConfig.npcs.push({
+                        id: `npc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                        name: n.name,
+                        role: n.role,
+                        note: n.note || ''
+                    });
+                    addLog(`📋 新增配角：${n.name}（${n.role}）`, 'system');
                 }
             }
         }
@@ -3463,6 +3525,7 @@ function initSetupPanel() {
     setupTabNavigation();
     setupEventListeners();
     setupLoadDataListeners();
+    syncWorldTabUI();
 }
 
 // 标签页导航
@@ -3515,6 +3578,79 @@ function selectPreset(presetId) {
     renderPresetCards();
     renderCharacterEditor();
     renderRoomEditor();
+    syncWorldTabUI();
+}
+
+function updateSceneName(value) {
+    setupPanelState.currentConfig.sceneName = value || '公寓';
+}
+
+function updateWorldSetting(value) {
+    setupPanelState.currentConfig.worldSetting = value;
+}
+
+function updateStartTime(value) {
+    if (value) {
+        setupPanelState.currentConfig.startTime = value + ':00';
+    }
+}
+
+function syncWorldTabUI() {
+    const cfg = setupPanelState.currentConfig;
+    const sceneInput = document.getElementById('sceneNameInput');
+    const worldInput = document.getElementById('worldSettingInput');
+    const startInput = document.getElementById('startTimeInput');
+    if (sceneInput) sceneInput.value = cfg.sceneName || '公寓';
+    if (worldInput) worldInput.value = cfg.worldSetting || '';
+    if (startInput) startInput.value = (cfg.startTime || '').slice(0, 16);
+    renderSetupNPCList();
+}
+
+// ===== 设置面板 NPC 管理 =====
+
+function renderSetupNPCList() {
+    const container = document.getElementById('setup-npc-list');
+    if (!container) return;
+    const npcs = setupPanelState.currentConfig.npcs || [];
+    if (npcs.length === 0) {
+        container.innerHTML = '<div style="color:#555; font-size:12px; padding:6px 0;">暂无配角，AI 会在游戏中自动记录遇到的新面孔。</div>';
+        return;
+    }
+    container.innerHTML = npcs.map((npc, idx) => `
+        <div style="background:#0d0d0d; border:1px solid #2a2a2a; border-radius:4px; padding:10px; margin-bottom:8px;">
+            <div style="display:flex; gap:6px; margin-bottom:6px;">
+                <input type="text" value="${escapeAttr(npc.name)}" placeholder="名字" oninput="updateSetupNPC(${idx},'name',this.value)"
+                    style="flex:1; background:#1a1a1a; color:#e0e0e0; border:1px solid #333; border-radius:3px; padding:5px 8px; font-size:12px;" />
+                <input type="text" value="${escapeAttr(npc.role)}" placeholder="身份/职业" oninput="updateSetupNPC(${idx},'role',this.value)"
+                    style="flex:1; background:#1a1a1a; color:#e0e0e0; border:1px solid #333; border-radius:3px; padding:5px 8px; font-size:12px;" />
+                <button onclick="removeSetupNPC(${idx})" style="background:none; border:none; color:#ff4444; cursor:pointer; font-size:14px; padding:0 4px;">✕</button>
+            </div>
+            <input type="text" value="${escapeAttr(npc.note)}" placeholder="备注（与角色的关系、特点…）" oninput="updateSetupNPC(${idx},'note',this.value)"
+                style="width:100%; box-sizing:border-box; background:#1a1a1a; color:#e0e0e0; border:1px solid #333; border-radius:3px; padding:5px 8px; font-size:12px;" />
+        </div>
+    `).join('');
+}
+
+function addSetupNPC() {
+    if (!setupPanelState.currentConfig.npcs) setupPanelState.currentConfig.npcs = [];
+    setupPanelState.currentConfig.npcs.push({
+        id: `npc_${Date.now()}`,
+        name: '',
+        role: '',
+        note: ''
+    });
+    renderSetupNPCList();
+}
+
+function removeSetupNPC(idx) {
+    setupPanelState.currentConfig.npcs.splice(idx, 1);
+    renderSetupNPCList();
+}
+
+function updateSetupNPC(idx, field, value) {
+    if (setupPanelState.currentConfig.npcs?.[idx]) {
+        setupPanelState.currentConfig.npcs[idx][field] = value;
+    }
 }
 
 // 渲染角色编辑器
@@ -3548,8 +3684,8 @@ function renderCharacterEditor() {
                 <div class="editor-field-group" style="flex: 0.6;">
                     <div class="editor-field-label">颜色</div>
                     <div class="color-input-group" style="gap: 4px;">
-                        <input type="color" class="color-picker" value="${char.color}" oninput="updateSetupCharColor('${char.id}', this.value)" style="width: 40px; flex-shrink: 0;" />
-                        <input type="text" class="color-code" value="${char.color}" onchange="updateSetupCharColor('${char.id}', this.value)" style="flex: 1; font-size: 11px;" />
+                        <input type="color" class="color-picker" data-char-id="${char.id}" value="${char.color}" oninput="updateSetupCharColor('${char.id}', this.value)" style="width: 40px; flex-shrink: 0;" />
+                        <input type="text" class="color-code" data-char-id="${char.id}" value="${char.color}" oninput="updateSetupCharColor('${char.id}', this.value)" style="flex: 1; font-size: 11px;" />
                     </div>
                 </div>
             </div>
@@ -3745,11 +3881,10 @@ function updateSetupCharColor(charId, newColor) {
     }
 
     char.color = newColor;
-    // 同步到文本输入框（如果存在）
-    const textInput = document.querySelector(`.color-code[value="${newColor}"]`)?.parentElement?.querySelector('.color-code');
-    if (textInput && textInput.value !== newColor) {
-        textInput.value = newColor;
-    }
+    // 同步选色器和文本框
+    document.querySelectorAll(`[data-char-id="${charId}"]`).forEach(el => {
+        if (el.value !== newColor) el.value = newColor;
+    });
 
     refreshSetupRelationshipLabels(charId);
 }
@@ -4090,6 +4225,7 @@ function loadSaveSlotToSetup(slotIndex) {
         renderPresetCards();
         renderCharacterEditor();
         renderRoomEditor();
+        syncWorldTabUI();
 
         // 切换到预设标签页并提示用户
         document.querySelector('[data-tab="presets"]').click();
@@ -4115,6 +4251,7 @@ function loadAutoSaveToSetup() {
         renderPresetCards();
         renderCharacterEditor();
         renderRoomEditor();
+        syncWorldTabUI();
         document.querySelector('[data-tab="presets"]').click();
         addLog('✅ 已从自动存档读取配置', 'system');
     } catch (e) {
@@ -4356,6 +4493,7 @@ function confirmImportData() {
             renderCharacterEditor();
             renderRoomEditor();
             renderSaveSlots();
+            syncWorldTabUI();
 
             // 隐藏预览
             document.getElementById('import-preview').style.display = 'none';
@@ -4421,6 +4559,7 @@ function confirmImportData() {
             renderCharacterEditor();
             renderRoomEditor();
             renderSaveSlots();
+            syncWorldTabUI();
 
             // 隐藏预览
             document.getElementById('import-preview').style.display = 'none';
@@ -4591,8 +4730,10 @@ function initEditDrawer() {
             // 刷新内容
             if (tabName === 'chars') {
                 renderDrawerCharacters();
-            } else {
+            } else if (tabName === 'rooms') {
                 renderDrawerRooms();
+            } else if (tabName === 'world') {
+                renderDrawerWorld();
             }
         });
     });
@@ -4862,6 +5003,115 @@ function updateRoomDescription(roomId, desc) {
     if (room) {
         room.description = desc;
     }
+}
+
+// 渲染世界观编辑器
+function renderDrawerWorld() {
+    const container = document.getElementById('drawer-world');
+    const sceneName = activeConfig.sceneName || '公寓';
+    const worldSetting = activeConfig.worldSetting || '';
+    const currentTime = gameState.currentTime
+        ? new Date(gameState.currentTime).toISOString().slice(0, 16)
+        : (activeConfig.startTime || '2025-03-04T08:00').slice(0, 16);
+
+    container.innerHTML = `
+        <div style="padding: 12px;">
+            <div style="color: #aaa; font-size: 12px; margin-bottom: 6px;">场景名称（替换 AI 提示词中的"公寓"）</div>
+            <input
+                type="text"
+                id="drawer-scene-name"
+                placeholder="公寓"
+                style="width: 100%; box-sizing: border-box; background: #0d0d0d; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; padding: 8px 10px; font-size: 12px;"
+            />
+
+            <div style="color: #aaa; font-size: 12px; margin: 14px 0 6px;">故事背景描述（直接注入 AI 提示词）</div>
+            <textarea
+                id="drawer-world-setting"
+                rows="6"
+                placeholder="留空则默认现代都市。可自由描述世界观，例如：赛博朋克近未来城市、架空古风仙侠世界…"
+                style="width: 100%; box-sizing: border-box; background: #0d0d0d; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; padding: 10px; font-size: 12px; resize: vertical; font-family: inherit;"
+            ></textarea>
+
+            <div style="color: #aaa; font-size: 12px; margin: 14px 0 6px;">游戏当前时间（修改后下次行动生效）</div>
+            <input
+                type="datetime-local"
+                id="drawer-start-time"
+                style="background: #0d0d0d; color: #e0e0e0; border: 1px solid #333; border-radius: 4px; padding: 8px 10px; font-size: 12px; width: 100%; box-sizing: border-box;"
+            />
+
+            <div style="color: #aaa; font-size: 12px; margin: 14px 0 6px;">NPC 配角</div>
+            <div id="drawer-npc-list"></div>
+            <button onclick="addDrawerNPC()" style="margin-top: 6px; padding: 5px 12px; background: #1a3a1a; color: #00ff41; border: 1px solid #00ff41; border-radius: 4px; cursor: pointer; font-size: 11px;">+ 添加配角</button>
+
+            <button
+                onclick="applyDrawerWorldSetting()"
+                style="margin-top: 14px; width: 100%; padding: 9px; background: #00a060; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;"
+            >应用</button>
+        </div>
+    `;
+    document.getElementById('drawer-scene-name').value = sceneName;
+    document.getElementById('drawer-world-setting').value = worldSetting;
+    document.getElementById('drawer-start-time').value = currentTime;
+    renderDrawerNPCList();
+}
+
+function renderDrawerNPCList() {
+    const container = document.getElementById('drawer-npc-list');
+    if (!container) return;
+    const npcs = activeConfig.npcs || [];
+    if (npcs.length === 0) {
+        container.innerHTML = '<div style="color:#555; font-size:11px; padding:4px 0;">暂无配角。</div>';
+        return;
+    }
+    container.innerHTML = npcs.map((npc, idx) => `
+        <div style="background:#0d0d0d; border:1px solid #2a2a2a; border-radius:3px; padding:8px; margin-bottom:6px;">
+            <div style="display:flex; gap:5px; margin-bottom:5px;">
+                <input type="text" value="${escapeAttr(npc.name)}" placeholder="名字" oninput="updateDrawerNPC(${idx},'name',this.value)"
+                    style="flex:1; background:#1a1a1a; color:#e0e0e0; border:1px solid #333; border-radius:3px; padding:4px 7px; font-size:11px;" />
+                <input type="text" value="${escapeAttr(npc.role)}" placeholder="身份" oninput="updateDrawerNPC(${idx},'role',this.value)"
+                    style="flex:1; background:#1a1a1a; color:#e0e0e0; border:1px solid #333; border-radius:3px; padding:4px 7px; font-size:11px;" />
+                <button onclick="removeDrawerNPC(${idx})" style="background:none; border:none; color:#ff4444; cursor:pointer; font-size:13px; padding:0 3px;">✕</button>
+            </div>
+            <input type="text" value="${escapeAttr(npc.note)}" placeholder="备注（关系、特点…）" oninput="updateDrawerNPC(${idx},'note',this.value)"
+                style="width:100%; box-sizing:border-box; background:#1a1a1a; color:#e0e0e0; border:1px solid #333; border-radius:3px; padding:4px 7px; font-size:11px;" />
+        </div>
+    `).join('');
+}
+
+function addDrawerNPC() {
+    if (!activeConfig.npcs) activeConfig.npcs = [];
+    activeConfig.npcs.push({ id: `npc_${Date.now()}`, name: '', role: '', note: '' });
+    renderDrawerNPCList();
+}
+
+function removeDrawerNPC(idx) {
+    activeConfig.npcs.splice(idx, 1);
+    renderDrawerNPCList();
+}
+
+function updateDrawerNPC(idx, field, value) {
+    if (activeConfig.npcs?.[idx]) {
+        activeConfig.npcs[idx][field] = value;
+    }
+}
+
+function applyDrawerWorldSetting() {
+    const sceneVal = document.getElementById('drawer-scene-name').value;
+    const worldVal = document.getElementById('drawer-world-setting').value;
+    const timeVal = document.getElementById('drawer-start-time').value;
+
+    activeConfig.sceneName = sceneVal || '公寓';
+    activeConfig.worldSetting = worldVal;
+
+    if (timeVal) {
+        const newTime = new Date(timeVal);
+        if (!isNaN(newTime.getTime())) {
+            gameState.currentTime = newTime;
+            updateUI();
+        }
+    }
+
+    addLog('世界设定已更新', 'system');
 }
 
 // 添加房间物品
