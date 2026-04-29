@@ -3084,6 +3084,11 @@ function tryLoadAutoSaveOnStartup() {
 
         console.log('🔄 检测到自动存档，正在恢复游戏状态...');
 
+        // 恢复配置（世界设定、场景名称、NPC 等）
+        if (data.configSnapshot) {
+            activeConfig = deepClone(data.configSnapshot);
+        }
+
         // 恢复游戏状态
         gameState.startTime = new Date(loadedState.startTime);
         gameState.currentTime = new Date(loadedState.currentTime);
@@ -3169,6 +3174,11 @@ function loadGame(slotIndex) {
         // 停止当前所有逻辑
         if (gameState.loopTimeoutId) clearTimeout(gameState.loopTimeoutId);
         if (gameState.actionTimeoutId) clearInterval(gameState.actionTimeoutId);
+
+        // 恢复配置（世界设定、场景名称、NPC 等）
+        if (data.configSnapshot) {
+            activeConfig = deepClone(data.configSnapshot);
+        }
 
         // 还原状态 (Date 对象需要特殊处理，因为 JSON 不支持 Date 类型)
         gameState.startTime = new Date(loadedState.startTime);
