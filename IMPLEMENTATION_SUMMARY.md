@@ -13,6 +13,7 @@
 | **游戏前设置面板** | ✅ | index.html:13-90, style.css:713-902, game.js:3104-3167 | 预设选择、角色编辑、房间编辑、API Key 输入 |
 | **游戏中编辑抽屉** | ✅ | index.html:127-147, style.css:905-1002, game.js:3170-3346 | 实时改颜色/技能/关系度、编辑房间 |
 | **技能学习系统** | ✅ | game.js:332-385, 1951-1953 | applySkillChanges()、skill_changes 自动处理 |
+| **角色物品系统** | ✅ | game.js:266, 5354-5407, style.css | 角色背包、物品流转（pick_up/put_down/give）、背包消耗 |
 
 ---
 
@@ -66,6 +67,52 @@ toggleDrawer() {
 - ✅ 非破坏性编辑（随时打开/关闭）
 - ✅ 修改立即生效
 - ✅ 自动同步到 gameState + activeConfig
+
+### 5. 角色物品系统
+
+**数据结构**：
+- 每个角色新增 `inventory: [{id, name}]` 背包字段
+- `charConfig.initialInventory` 支持预设初始物品（默认 `[]`）
+- 存档自动包含背包数据；旧存档加载时自动补 `[]`
+
+**AI 物品指令（新增字段）**：
+
+```json
+{
+  "purchases": [
+    { "item": "自制便当", "dest": "inventory", "cost": 30 },
+    { "item": "书架",     "dest": "livingRoom", "cost": 500 }
+  ],
+  "consume_items": [
+    { "item": "自制便当", "from": "inventory" },
+    { "item": "食材",     "from": "kitchen" }
+  ],
+  "item_actions": [
+    { "type": "pick_up",  "item": "素描本",   "from_room": "bedroom_miku" },
+    { "type": "put_down", "item": "素描本",   "to_room": "livingRoom" },
+    { "type": "give",     "item": "自制便当", "to_char": "五月" }
+  ]
+}
+```
+
+**物品流转规则**：
+
+| 操作 | 来源 | 目标 | 触发方式 |
+|------|------|------|----------|
+| 购买→背包 | 钱包 | 角色背包 | `purchases.dest = "inventory"` |
+| 购买→房间 | 钱包 | 指定房间 | `purchases.dest = 房间ID` |
+| 拾取 | 房间 | 角色背包 | `item_actions.type = "pick_up"` |
+| 放下 | 角色背包 | 当前/指定房间 | `item_actions.type = "put_down"` |
+| 赠与 | 角色背包 | 另一角色背包 | `item_actions.type = "give"` |
+| 消耗（背包） | 角色背包 | 删除 | `consume_items.from = "inventory"` |
+| 消耗（房间） | 指定房间 | 删除 | `consume_items.from = 房间ID` |
+
+**UI 入口**：
+- 角色卡片：实时显示背包物品（橙色标签）
+- 游戏中编辑抽屉 → 角色页：手动添加/移除背包物品
+- 游戏前设置面板 → 角色配置：配置初始背包物品
+
+---
 
 ### 4. AI 技能学习
 
@@ -153,6 +200,11 @@ gameState + activeConfig 同步更新
 | `renderDrawerRooms()` | L3302 | 渲染房间编辑器 |
 | `addSkill()` | L3247 | 添加技能 |
 | `updateCharColor()` | L3235 | 更新角色颜色 |
+| `addToInventory()` | L5397 | 向角色背包添加物品（去重） |
+| `removeFromInventory()` | L5405 | 从角色背包移除物品 |
+| `processItemAction()` | L5412 | 处理 pick_up / put_down / give |
+| `addInventoryItem()` | L5117 | 抽屉手动添加背包物品 |
+| `addSetupInventoryItem()` | L4035 | 设置面板添加初始背包物品 |
 
 ---
 
@@ -316,6 +368,7 @@ applyCharacterColors();  // UI 更新
 - ✅ 游戏前设置面板完全实现
 - ✅ 游戏中编辑抽屉完全实现
 - ✅ 角色技能学习系统完全实现
+- ✅ 角色物品系统完全实现（背包、流转、消耗、UI）
 - ✅ Token 消耗 <30%
 - ✅ 向下兼容（无需改现有代码）
 - ✅ 用户文档完备
@@ -331,11 +384,12 @@ applyCharacterColors();  // UI 更新
 2. ✅ **游戏前设置** - 玩家可在启动前完全自定义
 3. ✅ **游戏中编辑** - 实时修改所有配置参数
 4. ✅ **AI 学习技能** - 自动处理 skill_changes 字段
+5. ✅ **角色物品系统** - 背包持有、物品流转、消耗机制与房间物品联动
 
 系统已**生产就绪**，可以立即投入使用！
 
 ---
 
-**版本**: 2.0
-**最后更新**: 2026-03-06
+**版本**: 0.2.4
+**最后更新**: 2026-04-29
 **状态**: 完成 ✅

@@ -263,6 +263,7 @@ function initGameStateFromConfig(config) {
             actionHistory: [],
             lastActionType: 'rest',
             artworks: [],
+            inventory: deepClone(charConfig.initialInventory || []),
 
             // 关系值（克隆 initialRelationships）
             relationship: deepClone(charConfig.initialRelationships)
@@ -300,7 +301,8 @@ function initGameStateFromConfig(config) {
         lastActionTime: null,
         dayCount: 1,
         dailyInteractions: [],
-        recentEvents: []   // 近几轮关键事件，供下轮 prompt 使用
+        recentEvents: [],  // 近几轮关键事件，供下轮 prompt 使用
+        coupleStatus: {}   // 恋爱/婚姻状态 key:"charId1,charId2"(排序) value:{status,since}
     };
 }
 
@@ -535,6 +537,23 @@ function getRelationshipLevel(val) {
     return '不死不休';
 }
 
+// ===== 恋爱/婚姻状态工具函数 =====
+
+function getCoupleKey(id1, id2) {
+    return [id1, id2].sort().join(',');
+}
+
+function getCoupleStatus(id1, id2) {
+    return gameState.coupleStatus?.[getCoupleKey(id1, id2)] || null;
+}
+
+function getCoupleStatusLabel(status) {
+    if (status === 'married') return '💍已婚';
+    if (status === 'lovers')  return '❤️恋人';
+    if (status === 'ambiguous') return '💕暧昧';
+    return '';
+}
+
 // 更新角色UI
 function updateCharactersUI() {
     ui.charactersContainer.innerHTML = '';
@@ -556,6 +575,10 @@ function updateCharactersUI() {
             <p>钱包: ¥${char.wallet}</p>
             <p>当前位置: ${char.currentRoom === 'outside' ? '外出' : (gameState.apartment.rooms[char.currentRoom]?.name || '未知')}</p>
             <p>当前行为: ${char.currentAction}</p>
+            ${char.inventory && char.inventory.length > 0
+                ? `<div class="char-inventory"><span class="inventory-label">背包:</span> ${char.inventory.map(i => `<span class="inventory-item">${i.name}${(i.quantity||1)>1?` <span style="opacity:0.7">×${i.quantity}</span>`:''}</span>`).join('')}</div>`
+                : '<div class="char-inventory"><span class="inventory-label">背包:</span> <span class="inventory-empty">空</span></div>'
+            }
             <div class="stats">
                 ${Object.entries(char.relationship).map(([id, val]) => `<span class="stat">与${gameState.characters[id]?.name || id}: ${val}（${getRelationshipLevel(val)}）</span>`).join('')}
             </div>
@@ -1041,6 +1064,12 @@ function cleanAndParseJSON(rawContent) {
     // 去掉尾随逗号，如 "value", } 或 "value", ]
     cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
 
+    // 修复 AI 忘记给字段值加引号的情况，如 "thought": （内心独白...）
+    // 匹配冒号后跟全角括号包裹的未引用值，补全外层引号
+    cleaned = cleaned.replace(/(:\s*)(（[^\n]*）)(?=\s*[,\n}])/g, (_, colon, val) => {
+        return `${colon}"${val.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    });
+
     // 尝试直接解析
     try {
         return JSON.parse(cleaned);
@@ -1049,6 +1078,22 @@ function cleanAndParseJSON(rawContent) {
         try {
             return JSON.parse(repairJSONStrings(cleaned));
         } catch (e2) { /* 继续下面的修复策略 */ }
+
+        // 按错误位置截断，修复截断点之前的内容（处理 "Expected ',' or '}'" 等位置型错误）
+        const posMatch = e.message.match(/position (\d+)/);
+        if (posMatch) {
+            const errorPos = parseInt(posMatch[1]);
+            const beforeError = cleaned.substring(0, errorPos);
+            const lastComma = beforeError.lastIndexOf(',');
+            if (lastComma > 0) {
+                try {
+                    return JSON.parse(repairJSONStrings(beforeError.substring(0, lastComma)));
+                } catch (e3) { /* 继续 */ }
+            }
+            try {
+                return JSON.parse(repairJSONStrings(beforeError));
+            } catch (e3) { /* 继续 */ }
+        }
 
         // 检查是否是未终止的字符串错误
         if (e.message.includes('Unterminated string')) {
@@ -1361,11 +1406,18 @@ function generateDynamicPersonality(character) {
         personality += ` 【卫生状况：感觉有些不爽。${pronoun}偶尔会挠一挠。】`;
     }
 
-    // 根据关系值调整对他人的态度
+    // 根据关系值和恋爱状态调整对他人的态度
     const relationships = Object.entries(char.relationship).map(([key, value]) => {
         const relationChar = gameState.characters[key];
         if (!relationChar) return '';
-        if (value <= -61) {
+        const couple = getCoupleStatus(character, key);
+        if (couple?.status === 'married') {
+            return `与${relationChar.name}是夫妻，彼此是人生伴侣，深度依赖，生活紧密交织，可用"老公/老婆"等亲密称谓称呼对方。`;
+        } else if (couple?.status === 'lovers') {
+            return `与${relationChar.name}是恋人，感情深厚，行为举止亲密，主动关心体贴，可用"宝贝/亲爱的"等称谓。`;
+        } else if (couple?.status === 'ambiguous') {
+            return `与${relationChar.name}处于暧昧阶段，内心有特别的感情，言行中带有含蓄的情感流露。`;
+        } else if (value <= -61) {
             return `对${relationChar.name}怀有强烈敌意，言行充满对立，极力回避或针对对方。`;
         } else if (value <= -31) {
             return `对${relationChar.name}明显反感，尽量回避接触，态度冷漠甚至带有敌意。`;
@@ -1437,7 +1489,7 @@ function buildSystemPrompt() {
 
     const npcList = (activeConfig.npcs || []);
     const npcBlock = npcList.length > 0
-        ? `【NPC配角】\n以下是场景中可能出现的配角，可自然地将他们写入叙事和角色行为中：\n${npcList.map(n => `- ${n.name}（${n.role}）${n.note ? '：' + n.note : ''}`).join('\n')}\n如果行为中遇到了尚未记录的陌生人，可通过 new_npcs 字段将其加入配角列表。\n\n`
+        ? `【NPC配角】\n以下是场景中已记录的配角，可自然地将他们写入叙事和角色行为中：\n${npcList.map(n => `- ${n.name}（${n.role}）${n.note ? '：' + n.note : ''}`).join('\n')}\n⚠️ 以上已记录的配角【禁止】再次出现在 new_npcs 字段中。只有上方列表里完全没有的全新陌生人，才可通过 new_npcs 添加。\n\n`
         : `【NPC配角】\n场景中暂无预设配角。如果行为中自然出现了有意义的陌生人（邻居、同事、快递员等），可通过 new_npcs 字段记录他们。\n\n`;
 
     const sceneName = activeConfig.sceneName || '公寓';
@@ -1474,7 +1526,7 @@ ${roomList}
 你必须严格返回 JSON 格式，包含以下字段：
 1. "actions": 数组，包含${actionCountText}个角色的行为，每个元素包含：
    - "character": 角色名称（${chars.map(c => `"${c.name}"`).join(', ')} 之一）
-   - "thought": 角色内心世界（文学化，100-170字）
+   - "thought": 角色内心世界（文学化，100-170字）。⚠️ 值必须是普通 JSON 字符串，直接写内容，禁止用（）或()包裹整段文字
    - "action": 行为过程描写（文学化，100-200字）
    - "result": 结果与余韵（50-100字）
    - "duration": 行为持续时间（分钟，5-120之间）
@@ -1485,11 +1537,14 @@ ${roomList}
    - "actionType": 行为类型（primary_work|secondary_work|daily_life|leisure|rest|social）
    - "workOutput": （可选）创作成果，结构：{ "title": "作品名", "type": "illustration|food_photo|video", "description": "30字内描述" }
    - "skill_changes": （可选）技能变化，结构：{ "learn": ["新技能"], "forget": ["失去的技能"] }，仅当角色通过本次行为确实学到或失去了技能时填写
-   - "purchases": （可选）购买并添置到房间的物品，结构：[{"item": "物品名称", "room": "房间英文ID", "cost": 价格数字}]。规则：①仅当角色确实去购物或网购时才填写；②cost 必须从 wallet 中扣除（stat_changes.wallet 不需要再重复扣）；③余额不足时不得购买；④物品要符合角色性格、职业和所在房间用途；⑤价格参考：日用品5-50，食材10-100，家居小物件50-500，电子产品500-5000，家具200-3000
+   - "purchases": （可选）购买物品，结构：[{"item": "物品名称", "dest": "inventory 或 房间英文ID", "cost": 价格数字, "quantity": 数量（可选，默认1）}]。规则：①仅当角色确实去购物或网购时才填写；②cost 必须从 wallet 中扣除（stat_changes.wallet 不需要再重复扣）；③余额不足时不得购买；④物品要符合角色性格、职业和用途；⑤价格参考：日用品5-50，食材10-100，家居小物件50-500，电子产品500-5000，家具200-3000；⑥随身携带小物件（食材、外带食物、书籍、小礼物等）dest填"inventory"，家具/家电等固定物件填房间ID；⑦外卖/拼单等捆绑包必须拆分为独立物品（如外卖三份写成三明治×2、饮料×1等分别条目），不得写成一整条捆绑名称
+   - "consume_items": （可选）本次行为中实际用尽或消耗掉的物品，结构：[{"item": "物品名称", "from": "inventory（背包）或 房间英文ID", "quantity": 数量（可选，默认1）}]。规则：①仅填写真正被用完的消耗品，如食材、零食、饮料、面膜、卫生纸等；②家具、家电、工具等耐用品不填；③物品必须确实存在于对应位置；④from填"inventory"表示消耗角色背包里的物品，填房间ID表示消耗房间里的物品；⑤有quantity字段时可消耗多份（如吃掉2个包子填quantity:2），背包里剩余份数会相应减少；⑥quantity不得超过背包实际持有数量
+   - "item_actions": （可选）物品互动，结构：[{"type": "pick_up|put_down|give", "item": "物品名称", "quantity": 数量（可选，默认1）, "from_room": "房间ID（pick_up时填）", "to_room": "房间ID（put_down时填，留空则用当前房间）", "to_char": "角色名（give时填）"}]。规则：①pick_up从房间拾取物品入背包；②put_down将背包物品放到房间；③give将背包物品赠给同房间角色；④物品必须确实存在于对应位置；⑤give时quantity可大于1（如送2个饼干）
 
 2. "narrative": 散文化场景叙述（80-150字）
 3. "time_passed": 游戏时间流逝分钟数
 4. "new_npcs": （可选）本轮行为中自然出现的新配角，数组，每项：{"name": "姓名或称呼", "role": "身份/职业", "note": "与角色的关系或特点"}。仅当确实出现了有意义的新面孔时填写，不要强行创造。
+5. "love_events": （可选）当本轮发生重要感情事件时填写，数组，每项：{"type": "confession（表白）|accepted（接受）|proposal（求婚）|married（结婚）|breakup（分手）|divorce（离婚）", "from": "角色名", "to": "角色名", "description": "一句话描述"}。规则：①好感值双方≥65时角色才可能表白；②双方≥82且已是恋人才可求婚；③表白/求婚是否成功由对方角色性格决定；④分手/离婚需一方明显心灰意冷；⑤不要强行创造，只在叙事中确实发生时填写。
 
 严格返回JSON，不含任何额外文字。`;
 
@@ -1892,21 +1947,20 @@ function mockAIResponse(prompt) {
 
 // ====================== 夜晚关系结算 ======================
 
-// mock：无 API 时的夜晚结算结果
-function mockNightlyReview() {
+// mock：无 API 时的夜晚结算结果（只评估有互动的配对，非互动配对由衰减机制处理）
+function mockNightlyReview(interactedNamePairs) {
     const chars = Object.values(gameState.characters);
     const reviews = [];
     for (let i = 0; i < chars.length; i++) {
         for (let j = 0; j < chars.length; j++) {
             if (i === j) continue;
-            const hasInteraction = gameState.dailyInteractions.some(
-                item => item.actor === chars[i].name && item.with.includes(chars[j].name)
-            );
+            const namePair = [chars[i].name, chars[j].name].sort().join(',');
+            if (!interactedNamePairs.has(namePair)) continue;
             reviews.push({
                 from: chars[i].name,
                 to: chars[j].name,
-                delta: hasInteraction ? 1 : 0,
-                reason: hasInteraction ? '今日有互动，感情略有升温' : '今日无直接互动'
+                delta: 1,
+                reason: '今日有互动'
             });
         }
     }
@@ -2020,36 +2074,45 @@ async function generateArtworkImagePrompt(char, workOutput, action) {
 async function doNightlyRelationshipReview() {
     addLog('=== 夜晚关系结算开始 ===', 'system');
 
-    if (gameState.dailyInteractions.length === 0) {
-        addLog('今日无互动记录，关系值保持不变。', 'system');
-        return;
-    }
-
-    const interactionSummary = gameState.dailyInteractions.map((item, i) => {
-        let entry = `${i + 1}. ${item.actor}与${item.with}：${item.action}${item.result ? ' → ' + item.result : ''}`;
-        if (Array.isArray(item.dialogue) && item.dialogue.length > 0) {
-            const dialogueText = item.dialogue.map(d => `${d.speaker}：「${d.line}」`).join(' / ');
-            entry += `\n   对话：${dialogueText}`;
-        }
-        return entry;
-    }).join('\n');
-
-    const charSummary = Object.values(gameState.characters).map(char =>
-        `${char.name}：${Object.entries(char.relationship).map(([id, val]) =>
-            `与${gameState.characters[id]?.name || id}: ${getRelationshipLevel(val)}`
-        ).join(', ')}`
-    ).join('\n');
-
-    const charNames = Object.values(gameState.characters).map(c => c.name);
-    const allPairs = [];
-    for (const a of charNames) {
-        for (const b of charNames) {
-            if (a !== b) allPairs.push(`${a}→${b}`);
+    // 构建今日有互动的配对集合（排序后的名字对）
+    const interactedNamePairs = new Set();
+    for (const item of gameState.dailyInteractions) {
+        const targets = item.with.split('、').map(s => s.trim());
+        for (const t of targets) {
+            if (t) interactedNamePairs.add([item.actor, t].sort().join(','));
         }
     }
-    const pairDesc = allPairs.join('、');
 
-    const reviewPrompt = `今天是第${gameState.dayCount - 1}天，${charNames.length}位角色度过了完整的一天。
+    // 有互动才调用 AI 评估
+    if (gameState.dailyInteractions.length > 0) {
+        const interactionSummary = gameState.dailyInteractions.map((item, i) => {
+            let entry = `${i + 1}. ${item.actor}与${item.with}：${item.action}${item.result ? ' → ' + item.result : ''}`;
+            if (Array.isArray(item.dialogue) && item.dialogue.length > 0) {
+                const dialogueText = item.dialogue.map(d => `${d.speaker}：「${d.line}」`).join(' / ');
+                entry += `\n   对话：${dialogueText}`;
+            }
+            return entry;
+        }).join('\n');
+
+        const charSummary = Object.values(gameState.characters).map(char =>
+            `${char.name}：${Object.entries(char.relationship).map(([id, val]) =>
+                `与${gameState.characters[id]?.name || id}: ${getRelationshipLevel(val)}`
+            ).join(', ')}`
+        ).join('\n');
+
+        // 只要求 AI 评估有互动的配对（双向）
+        const reviewPairSet = new Set();
+        const reviewPairs = [];
+        for (const namePair of interactedNamePairs) {
+            const [nameA, nameB] = namePair.split(',');
+            const dirAB = `${nameA}→${nameB}`;
+            const dirBA = `${nameB}→${nameA}`;
+            if (!reviewPairSet.has(dirAB)) { reviewPairSet.add(dirAB); reviewPairs.push(dirAB); }
+            if (!reviewPairSet.has(dirBA)) { reviewPairSet.add(dirBA); reviewPairs.push(dirBA); }
+        }
+        const pairDesc = reviewPairs.join('、');
+
+        const reviewPrompt = `今天是第${gameState.dayCount - 1}天。
 
 【今日互动记录（共${gameState.dailyInteractions.length}条）】
 ${interactionSummary}
@@ -2057,8 +2120,14 @@ ${interactionSummary}
 【当前关系值】
 ${charSummary}
 
-请对每对角色之间今日互动进行综合评估，给出关系值调整。评估维度：互动频率、情感质量、相互理解程度。
-调整档次（只能从这五个值中选择）：-2（明显恶化）/ -1（略有疏远）/ 0（无变化）/ +1（略有升温）/ +2（明显升温）
+请对今日有互动的角色对进行严格评估，给出关系值调整。评分标准：
+- +2：发生了深刻的情感共鸣、坦诚的倾诉、或化解了重大矛盾
+- +1：互动有实质的温度，双方都感到被理解或愉快
+- 0：普通对话、简单寒暄、例行互动——有说话但无特别情感连接
+- -1：互动尴尬、话不投机、或一方明显敷衍
+- -2：发生争吵、冲突、或造成明显伤害
+
+【重要】日常打招呼、一起吃饭聊天等普通互动，默认给 0，不要因为"有互动"就给正值。
 
 返回 JSON：
 {
@@ -2067,41 +2136,165 @@ ${charSummary}
     ...
   ]
 }
-必须覆盖全部${allPairs.length}对方向（${pairDesc}）。严格返回JSON，不含额外文字。`;
+只需覆盖有互动的${reviewPairs.length}对方向（${pairDesc}）。严格返回JSON，不含额外文字。`;
 
-    try {
-        let result;
-        if (gameState.apiKey) {
-            result = await callNightlyReviewAI(reviewPrompt);
-        } else {
-            result = mockNightlyReview();
-        }
+        try {
+            let result;
+            if (gameState.apiKey) {
+                result = await callNightlyReviewAI(reviewPrompt);
+            } else {
+                result = mockNightlyReview(interactedNamePairs);
+            }
 
-        if (result && Array.isArray(result.reviews)) {
-            for (const review of result.reviews) {
-                const fromChar = getCharacterByName(review.from);
-                const toId = Object.keys(gameState.characters).find(
-                    id => gameState.characters[id].name === review.to
-                );
-                if (fromChar && toId && fromChar.relationship[toId] !== undefined) {
-                    const oldVal = fromChar.relationship[toId];
-                    const newVal = Math.max(-100, Math.min(100, oldVal + review.delta));
-                    fromChar.relationship[toId] = newVal;
-                    const sign = review.delta > 0 ? `+${review.delta}` : `${review.delta}`;
-                    addLog(
-                        `【结算】${review.from}→${review.to}: ${sign} → ${newVal}（${getRelationshipLevel(newVal)}）${review.reason ? ' | ' + review.reason : ''}`,
-                        'interaction'
+            if (result && Array.isArray(result.reviews)) {
+                for (const review of result.reviews) {
+                    const fromChar = getCharacterByName(review.from);
+                    const toId = Object.keys(gameState.characters).find(
+                        id => gameState.characters[id].name === review.to
                     );
+                    if (fromChar && toId && fromChar.relationship[toId] !== undefined) {
+                        const oldVal = fromChar.relationship[toId];
+                        const newVal = Math.max(-100, Math.min(100, oldVal + review.delta));
+                        fromChar.relationship[toId] = newVal;
+                        const sign = review.delta > 0 ? `+${review.delta}` : `${review.delta}`;
+                        addLog(
+                            `【结算】${review.from}→${review.to}: ${sign} → ${newVal}（${getRelationshipLevel(newVal)}）${review.reason ? ' | ' + review.reason : ''}`,
+                            'interaction'
+                        );
+                    }
                 }
             }
+        } catch (e) {
+            addLog(`夜晚关系结算出错: ${e.message}`, 'error');
         }
-    } catch (e) {
-        addLog(`夜晚关系结算出错: ${e.message}`, 'error');
+    } else {
+        addLog('今日无互动记录。', 'system');
+    }
+
+    // 方案A：自然疏远衰减——无互动的配对每天 -1
+    const charEntries = Object.entries(gameState.characters);
+    let decayPairs = 0;
+    for (let i = 0; i < charEntries.length; i++) {
+        for (let j = i + 1; j < charEntries.length; j++) {
+            const [id1, char1] = charEntries[i];
+            const [id2, char2] = charEntries[j];
+            const namePair = [char1.name, char2.name].sort().join(',');
+            if (!interactedNamePairs.has(namePair)) {
+                if (char1.relationship?.[id2] !== undefined && char1.relationship[id2] > -100) {
+                    char1.relationship[id2] = Math.max(-100, char1.relationship[id2] - 1);
+                }
+                if (char2.relationship?.[id1] !== undefined && char2.relationship[id1] > -100) {
+                    char2.relationship[id1] = Math.max(-100, char2.relationship[id1] - 1);
+                }
+                decayPairs++;
+            }
+        }
+    }
+    if (decayPairs > 0) {
+        addLog(`💨 自然疏远：${decayPairs} 对配对今日无互动，关系值各 -1`, 'system');
     }
 
     gameState.dailyInteractions = [];
     addLog('=== 夜晚关系结算完成 ===', 'system');
+    checkRelationshipRegression();
     updateUI();
+}
+
+// 处理 AI 返回的感情事件
+function processLoveEvents(events) {
+    if (!Array.isArray(events) || events.length === 0) return;
+
+    for (const event of events) {
+        if (!event.type || !event.from || !event.to) continue;
+
+        const fromChar = getCharacterByName(event.from);
+        const toChar   = getCharacterByName(event.to);
+        if (!fromChar || !toChar) continue;
+
+        // 找到两个角色的 ID
+        const fromId = Object.keys(gameState.characters).find(id => gameState.characters[id] === fromChar);
+        const toId   = Object.keys(gameState.characters).find(id => gameState.characters[id] === toChar);
+        if (!fromId || !toId) continue;
+
+        const key      = getCoupleKey(fromId, toId);
+        const current  = gameState.coupleStatus?.[key]?.status || null;
+        const relFrom  = fromChar.relationship?.[toId]  ?? 0;
+        const relTo    = toChar.relationship?.[fromId]  ?? 0;
+
+        switch (event.type) {
+            case 'confession': {
+                if (relFrom < 65 || relTo < 65) break;
+                if (!gameState.coupleStatus[key]) {
+                    gameState.coupleStatus[key] = { status: 'ambiguous', since: gameState.dayCount };
+                    if (event.description) addLog(event.description, 'system');
+                    addLog(`💕 ${fromChar.name} 向 ${toChar.name} 表白了，两人关系变得暧昧`, 'system');
+                }
+                break;
+            }
+            case 'accepted': {
+                if (relFrom < 65 || relTo < 65) break;
+                // 接受表白 → 升级为恋人
+                gameState.coupleStatus[key] = { status: 'lovers', since: gameState.dayCount };
+                if (event.description) addLog(event.description, 'system');
+                addLog(`❤️ ${fromChar.name} 与 ${toChar.name} 确认了恋人关系！`, 'system');
+                break;
+            }
+            case 'lovers': {
+                // AI 直接写成恋人（容错）
+                if (relFrom < 65 || relTo < 65) break;
+                gameState.coupleStatus[key] = { status: 'lovers', since: gameState.dayCount };
+                if (event.description) addLog(event.description, 'system');
+                addLog(`❤️ ${fromChar.name} 与 ${toChar.name} 确认了恋人关系！`, 'system');
+                break;
+            }
+            case 'proposal':
+            case 'married': {
+                if (relFrom < 82 || relTo < 82 || current !== 'lovers') break;
+                gameState.coupleStatus[key] = { status: 'married', since: gameState.dayCount };
+                if (event.description) addLog(event.description, 'system');
+                addLog(`💍 ${fromChar.name} 与 ${toChar.name} 结婚了！`, 'system');
+                break;
+            }
+            case 'breakup': {
+                if (current !== 'ambiguous' && current !== 'lovers') break;
+                delete gameState.coupleStatus[key];
+                if (event.description) addLog(event.description, 'system');
+                addLog(`💔 ${fromChar.name} 与 ${toChar.name} 分手了`, 'system');
+                break;
+            }
+            case 'divorce': {
+                if (current !== 'married') break;
+                delete gameState.coupleStatus[key];
+                if (event.description) addLog(event.description, 'system');
+                addLog(`💔 ${fromChar.name} 与 ${toChar.name} 离婚了`, 'system');
+                break;
+            }
+        }
+    }
+}
+
+// 夜间倒退检查：关系值跌落时自动触发分手/离婚
+function checkRelationshipRegression() {
+    if (!gameState.coupleStatus) return;
+    for (const [key, info] of Object.entries(gameState.coupleStatus)) {
+        const [id1, id2] = key.split(',');
+        const char1 = gameState.characters[id1];
+        const char2 = gameState.characters[id2];
+        if (!char1 || !char2) { delete gameState.coupleStatus[key]; continue; }
+
+        const rel1 = char1.relationship?.[id2] ?? 0;
+        const rel2 = char2.relationship?.[id1] ?? 0;
+
+        if (info.status === 'married' && (rel1 < 35 || rel2 < 35)) {
+            delete gameState.coupleStatus[key];
+            addLog(`💔 ${char1.name} 与 ${char2.name} 的婚姻走到了尽头，两人离婚了`, 'system');
+        } else if (info.status === 'lovers' && (rel1 < 45 || rel2 < 45)) {
+            delete gameState.coupleStatus[key];
+            addLog(`💔 ${char1.name} 与 ${char2.name} 分手了`, 'system');
+        } else if (info.status === 'ambiguous' && (rel1 < 55 || rel2 < 55)) {
+            delete gameState.coupleStatus[key];
+        }
+    }
 }
 
 // 检测是否为工作相关行为
@@ -2169,12 +2362,18 @@ function isRestRelatedAction(action, thought) {
 }
 
 // 检测是否为睡眠相关行为
-function isSleepRelatedAction(action, thought) {
+function isSleepRelatedAction(action, thought, result = '') {
     const sleepKeywords = [
         '睡觉', '睡眠', '上床', '躺下', '入睡', '休眠', '卧床',
-        '睡觉去', '睡着', '入睡', '梦', '梦乡', '昏昏欲睡', '打瞌睡', 'sleep', 'bed', 'bedroom'
+        '睡觉去', '睡着', '梦乡', '昏昏欲睡', '打瞌睡', 'sleep', 'bed', 'bedroom',
+        '被窝', '钻进被', '掀开被', '盖好被', '拉上被',
+        '关台灯', '关灯', '熄灯',
+        '闭上眼', '合眼', '闭眼',
+        '入眠', '安眠', '沉睡', '熟睡', '沉入梦',
+        '侧躺', '躺好', '躺进', '躺下来',
+        '眼皮沉', '困意', '困倦',
     ];
-    const text = (action + thought).toLowerCase();
+    const text = (action + thought + result).toLowerCase();
     return sleepKeywords.some(keyword => text.includes(keyword));
 }
 
@@ -2256,6 +2455,7 @@ ${char.name} (${char.age}岁, ${char.personality})：
 - 心情: ${char.mood}/100, 精力: ${char.energy}/100, 饱腹: ${char.satiety}/100, 卫生: ${char.hygiene}/100
 - 疲劳度: ${Math.round(char.fatigueLevel || 0)}/100 (当日工作: ${Math.round((char.workHoursToday || 0) * 10) / 10}h, 连续工作天数: ${char.consecutiveWorkDays || 0})
 - 钱包: ¥${char.wallet}, 职业: ${char.career} (月收入: ¥${char.monthlyIncome})
+- 背包: ${char.inventory && char.inventory.length > 0 ? char.inventory.map(i => (i.quantity || 1) > 1 ? `${i.name}×${i.quantity}` : i.name).join('、') : '（空）'}
 - 当前行为: ${char.currentAction}
 - 与他人关系: ${Object.entries(char.relationship).map(([id, val]) => `与${gameState.characters[id]?.name || id}: ${getRelationshipLevel(val)}`).join(', ')}
 `).join('\n')}
@@ -2344,8 +2544,8 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
         }
 
         // 处理每个角色的行为
-        // 用 Set 记录本轮已展示对话的互动对，避免 A↔B 双方都渲染对话
-        const shownDialoguePairs = new Set();
+        // 用 Set 记录本轮已展示的对话内容签名，避免同一段对话被多个角色重复渲染
+        const shownDialogueContent = new Set();
         for (const action of decision.actions) {
             const char = getCharacterByName(action.character);
             if (!char) continue;
@@ -2354,6 +2554,7 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
             if (char.status === 'unconscious') {
                 char.isSleeping = false;
                 char.currentAction = '晕倒中（需要照顾）';
+                char.lastWorkCheckTime = new Date(gameState.currentTime);
                 continue; // 跳过这个角色的行为处理，等待其他角色照顾
             }
 
@@ -2362,15 +2563,16 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
                 char.isSleeping = true;
                 char.status = 'sleeping';
                 char.currentAction = '在熟睡中...';
+                char.lastWorkCheckTime = new Date(gameState.currentTime);
                 continue; // 睡眠期间不执行新action
             }
 
             // 记录行为
             addLog(`${char.name}的思考: ${action.thought}`, 'thought');
-            addLog(`${char.name}的行为: ${action.action}`, 'action');
+            addLog(`${char.name}的行为: ${action.action}`, 'action', char.name);
 
             // 检测是否进入睡眠行为（需要满足时间和地点条件）
-            if (isSleepRelatedAction(action.action, action.thought) &&
+            if (isSleepRelatedAction(action.action, action.thought, action.result) &&
                 action.new_room && action.new_room.includes('bedroom')) {
                 // 检查时间是否在睡眠窗口（22-6点）
                 const hour = gameState.currentTime.getHours();
@@ -2381,6 +2583,7 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
                     char.sleepStartTime = gameState.currentTime;
                     char.sleepDuration = 0;
                     char.currentRoom = action.new_room;
+                    char.lastWorkCheckTime = new Date(gameState.currentTime);
                     addLog(`✨ ${char.name}躺下睡觉了（预计睡眠7-11小时）`, 'system');
                     continue;
                 }
@@ -2418,19 +2621,65 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
                 char.wallet = Math.max(0, char.wallet + (action.stat_changes.wallet || 0));
             }
 
-            // 处理购物（添置物品到房间）
+            // 处理购物（支持 dest: "inventory" 或 房间ID；兼容旧格式 room 字段）
             if (Array.isArray(action.purchases) && action.purchases.length > 0) {
                 for (const purchase of action.purchases) {
-                    if (!purchase.item || !purchase.room || typeof purchase.cost !== 'number') continue;
-                    const targetRoom = gameState.apartment.rooms[purchase.room];
-                    if (!targetRoom) continue;
+                    if (!purchase.item || typeof purchase.cost !== 'number') continue;
                     if (char.wallet < purchase.cost) {
                         addLog(`${char.name}想买${purchase.item}，但余额不足（¥${char.wallet}）`, 'system');
                         continue;
                     }
                     char.wallet = Math.max(0, char.wallet - purchase.cost);
-                    addRoomItem(purchase.room, purchase.item);
-                    addLog(`${char.name}花费 ¥${purchase.cost} 购入了「${purchase.item}」，放在${targetRoom.name}。余额：¥${char.wallet}`, 'system');
+                    const pQty = purchase.quantity || 1;
+                    const pQtyLabel = pQty > 1 ? ` ×${pQty}` : '';
+                    const dest = purchase.dest || purchase.room; // 兼容旧 room 字段
+                    if (dest === 'inventory') {
+                        addToInventory(char, purchase.item, pQty);
+                        addLog(`${char.name}花费 ¥${purchase.cost} 购入了「${purchase.item}」${pQtyLabel}，放入背包。余额：¥${char.wallet}`, 'system');
+                    } else if (dest && gameState.apartment.rooms[dest]) {
+                        addRoomItem(dest, purchase.item);
+                        addLog(`${char.name}花费 ¥${purchase.cost} 购入了「${purchase.item}」${pQtyLabel}，放在${gameState.apartment.rooms[dest].name}。余额：¥${char.wallet}`, 'system');
+                    } else {
+                        addToInventory(char, purchase.item, pQty);
+                        addLog(`${char.name}花费 ¥${purchase.cost} 购入了「${purchase.item}」${pQtyLabel}，放入背包。余额：¥${char.wallet}`, 'system');
+                    }
+                }
+            }
+
+            // 处理消耗品（从房间移除用完的物品）
+            if (Array.isArray(action.consume_items) && action.consume_items.length > 0) {
+                for (const consumed of action.consume_items) {
+                    if (!consumed.item) continue;
+                    const consumeFrom = consumed.from || consumed.room; // 兼容旧字段
+                    if (consumeFrom === 'inventory') {
+                        // 从背包消耗（有就删，没有静默跳过）
+                        const cQty = consumed.quantity || 1;
+                        if (removeFromInventory(char, consumed.item, cQty)) {
+                            const cLabel = cQty > 1 ? ` ×${cQty}` : '';
+                            addLog(`${char.name}用掉了背包里的「${consumed.item}」${cLabel}。`, 'system');
+                        }
+                    } else if (consumeFrom) {
+                        // 从房间消耗
+                        const targetRoom = gameState.apartment.rooms[consumeFrom];
+                        if (!targetRoom) continue;
+                        const idx = targetRoom.items.indexOf(consumed.item);
+                        if (idx === -1) {
+                            // 房间找不到则尝试从背包兜底
+                            if (removeFromInventory(char, consumed.item)) {
+                                addLog(`${char.name}用掉了背包里的「${consumed.item}」。`, 'system');
+                            }
+                            continue;
+                        }
+                        removeRoomItem(consumeFrom, idx);
+                        addLog(`${char.name}用掉了「${consumed.item}」，${targetRoom.name}里已没有了。`, 'system');
+                    }
+                }
+            }
+
+            // 处理物品互动（pick_up / put_down / give）
+            if (Array.isArray(action.item_actions) && action.item_actions.length > 0) {
+                for (const ia of action.item_actions) {
+                    processItemAction(char, ia);
                 }
             }
 
@@ -2542,12 +2791,14 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
             // 记录互动（累积到当天记录，供夜晚统一结算）
             if (action.interaction_with) {
                 addLog(`${char.name}与${action.interaction_with}进行了互动`, 'interaction');
-                // 用排序后的配对 key 判重，避免 A↔B 双方都渲染同一段对话
-                const pairKey = [char.name, action.interaction_with].sort().join('|');
-                if (Array.isArray(action.dialogue) && action.dialogue.length > 0 && !shownDialoguePairs.has(pairKey)) {
-                    shownDialoguePairs.add(pairKey);
-                    for (const line of action.dialogue) {
-                        addLog(`💬 ${line.speaker}：「${line.line}」`, 'interaction');
+                // 用对话内容签名判重，避免同一段对话因出现在多个角色的 action 里而重复打印
+                if (Array.isArray(action.dialogue) && action.dialogue.length > 0) {
+                    const dialogueKey = action.dialogue.map(d => `${d.speaker}:${d.line}`).join('\n');
+                    if (!shownDialogueContent.has(dialogueKey)) {
+                        shownDialogueContent.add(dialogueKey);
+                        for (const line of action.dialogue) {
+                            addLog(`💬 ${line.speaker}：「${line.line}」`, 'interaction');
+                        }
                     }
                 }
                 gameState.dailyInteractions.push({
@@ -2577,7 +2828,9 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
             activeConfig.npcs = activeConfig.npcs || [];
             for (const n of decision.new_npcs) {
                 if (!n.name || !n.role) continue;
-                const exists = activeConfig.npcs.some(existing => existing.name === n.name);
+                const exists = activeConfig.npcs.some(existing =>
+                    existing.name.trim().toLowerCase() === n.name.trim().toLowerCase()
+                );
                 if (!exists) {
                     activeConfig.npcs.push({
                         id: `npc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -2588,6 +2841,11 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
                     addLog(`📋 新增配角：${n.name}（${n.role}）`, 'system');
                 }
             }
+        }
+
+        // 处理感情事件
+        if (Array.isArray(decision.love_events) && decision.love_events.length > 0) {
+            processLoveEvents(decision.love_events);
         }
 
         // 将本轮关键事件存入 recentEvents，供下轮 prompt 使用（保留最近2轮）
@@ -2648,8 +2906,8 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
         }
 
         // 计算下次循环时间（真实时间）
-        // 默认每分钟执行一次循环，模拟时间流逝由AI决定
-        const realTimeInterval = 60000 / gameState.timeMultiplier;
+        // 默认每90秒执行一次循环，模拟时间流逝由AI决定
+        const realTimeInterval = 90000 / gameState.timeMultiplier;
         gameState.loopTimeoutId = setTimeout(gameLoop, realTimeInterval);
     }
 }
@@ -3047,7 +3305,8 @@ function autoSave() {
             characters: gameState.characters,
             apartment: gameState.apartment,
             lastActionTime: gameState.lastActionTime,
-            dailyInteractions: gameState.dailyInteractions
+            dailyInteractions: gameState.dailyInteractions,
+            coupleStatus: gameState.coupleStatus
         },
         saveTimestamp: formatGameTime(new Date()),
         isAutoSave: true
@@ -3098,6 +3357,7 @@ function tryLoadAutoSaveOnStartup() {
         if (loadedState.apartment) gameState.apartment = loadedState.apartment;
         gameState.lastActionTime = loadedState.lastActionTime ? new Date(loadedState.lastActionTime) : null;
         gameState.dailyInteractions = loadedState.dailyInteractions || [];
+        gameState.coupleStatus = loadedState.coupleStatus || {};
 
         // 设置游戏状态为暂停（等待用户手动开始）
         gameState.isPaused = true;
@@ -3106,6 +3366,7 @@ function tryLoadAutoSaveOnStartup() {
 
         // 确保角色有必要的字段（兼容性）
         for (const [charId, char] of Object.entries(gameState.characters)) {
+            if (!char.inventory) char.inventory = [];
             // 检查 relationship 字段
             if (!char.relationship || typeof char.relationship !== 'object') {
                 console.warn(`❌ 启动时加载：角色 ${charId} (${char.name}) 缺少 relationship 字段，正在初始化`);
@@ -3153,7 +3414,8 @@ function saveGame(slotIndex) {
             characters: gameState.characters,
             apartment: gameState.apartment,
             lastActionTime: gameState.lastActionTime,
-            dailyInteractions: gameState.dailyInteractions
+            dailyInteractions: gameState.dailyInteractions,
+            coupleStatus: gameState.coupleStatus
         },
         saveTimestamp: formatGameTime(new Date())
     };
@@ -3188,6 +3450,7 @@ function loadGame(slotIndex) {
         gameState.characters = loadedState.characters;
         // 确保角色有状态字段（兼容旧存档）
         for (const [charId, char] of Object.entries(gameState.characters)) {
+            if (!char.inventory) char.inventory = [];
             // 从 activeConfig 回填旧存档中缺失的静态描述字段
             const configChar = activeConfig?.characters?.find(c => c.id === charId);
             if (!char.careerPrompt) char.careerPrompt = configChar?.careerPrompt || '';
@@ -3257,6 +3520,7 @@ function loadGame(slotIndex) {
         if (loadedState.apartment) gameState.apartment = loadedState.apartment;
         gameState.lastActionTime = loadedState.lastActionTime ? new Date(loadedState.lastActionTime) : null;
         gameState.dailyInteractions = loadedState.dailyInteractions || [];
+        gameState.coupleStatus = loadedState.coupleStatus || {};
 
         // 确保 UI 按钮状态正确
         if (gameState.apiKey) {
@@ -3727,6 +3991,17 @@ function renderCharacterEditor() {
                 <input type="text" value="${(char.skills || []).join(', ')}" onchange="updateCharSkills(${idx}, this.value)" placeholder="例如：编程, 数学, 逻辑分析" />
             </div>
             <div class="editor-field-group">
+                <div class="editor-field-label">🎒 初始背包物品</div>
+                <div style="margin-bottom: 4px; display: flex; flex-wrap: wrap; gap: 4px; min-height: 22px;">
+                    ${(char.initialInventory || []).map((name, i) =>
+                        `<span style="background:rgba(255,149,0,0.15);border:1px solid rgba(255,149,0,0.4);color:#ffb84d;border-radius:3px;padding:1px 6px;font-size:12px;cursor:pointer;" onclick="removeSetupInventoryItem(${idx},${i})">${name} ✕</span>`
+                    ).join('')}
+                </div>
+                <input type="text" placeholder="输入物品名，按Enter添加"
+                       onkeypress="if(event.key==='Enter'&&this.value.trim()){addSetupInventoryItem(${idx},this.value.trim());this.value='';}"
+                       style="width:100%;" />
+            </div>
+            <div class="editor-field-group">
                 <div class="editor-field-label">性格描述</div>
                 <textarea oninput="updateCharField(${idx}, 'personality', this.value)" style="height: 80px;">${char.personality}</textarea>
             </div>
@@ -3816,6 +4091,23 @@ function renderCharacterEditor() {
 
 
 // 添加角色
+function addSetupInventoryItem(charIdx, itemName) {
+    const char = setupPanelState.currentConfig.characters[charIdx];
+    if (!char) return;
+    if (!char.initialInventory) char.initialInventory = [];
+    if (!char.initialInventory.includes(itemName)) {
+        char.initialInventory.push(itemName);
+        renderCharacterEditor();
+    }
+}
+
+function removeSetupInventoryItem(charIdx, itemIdx) {
+    const char = setupPanelState.currentConfig.characters[charIdx];
+    if (!char || !char.initialInventory) return;
+    char.initialInventory.splice(itemIdx, 1);
+    renderCharacterEditor();
+}
+
 function addCharacter() {
     if ((setupPanelState.currentConfig.characters || []).length >= 5) return;
 
@@ -3830,6 +4122,7 @@ function addCharacter() {
         monthlyIncome: 10000,
         careerPrompt: '工作提示',
         skills: [],
+        initialInventory: [],
         initialStats: { mood: 70, energy: 80, satiety: 60, hygiene: 80, wallet: 3000 },
         initialRelationships: {},
         bedroomId: `bedroom_${(setupPanelState.currentConfig.characters?.length || 0)}`
@@ -4645,6 +4938,7 @@ function startGameFromSetup() {
         if (loadedState.apartment) gameState.apartment = loadedState.apartment;
         gameState.lastActionTime = loadedState.lastActionTime ? new Date(loadedState.lastActionTime) : null;
         gameState.dailyInteractions = loadedState.dailyInteractions || [];
+        gameState.coupleStatus = loadedState.coupleStatus || {};
 
         // 清除临时存档状态
         setupPanelState.loadedGameState = null;
@@ -4792,6 +5086,8 @@ function renderDrawerCharacters() {
         for (const [otherId, otherChar] of Object.entries(gameState.characters)) {
             if (otherId !== charId && char.relationship && char.relationship[otherId] !== undefined) {
                 const relValue = char.relationship[otherId];
+                const coupleInfo = getCoupleStatus(charId, otherId);
+                const badge = coupleInfo ? `<span style="margin-left:6px;font-size:0.85em;">${getCoupleStatusLabel(coupleInfo.status)}</span>` : '';
                 relationsHtml += `
                     <div class="drawer-field">
                         <div class="relation-display">
@@ -4799,7 +5095,7 @@ function renderDrawerCharacters() {
                             <input type="range" min="-100" max="100" value="${relValue}"
                                    oninput="updateRelationship('${charId}', '${otherId}', this.value); this.nextElementSibling.textContent = this.value"
                                    style="flex: 1; margin: 0 8px; cursor: pointer;" />
-                            <span class="relation-value">${relValue}</span>
+                            <span class="relation-value">${relValue}</span>${badge}
                         </div>
                     </div>
                 `;
@@ -4854,10 +5150,41 @@ function renderDrawerCharacters() {
                 <input type="text" placeholder="输入新技能，按Enter添加" class="skills-input"
                        onkeypress="if(event.key==='Enter') addSkill('${charId}', this.value); this.value = '';" />
             </div>
+            <div class="drawer-field">
+                <div class="drawer-field-label">🎒 背包 (${(char.inventory || []).length})</div>
+                <div style="margin: 4px 0; font-size: 11px; color: #888;">
+                    ${(char.inventory || []).length === 0
+                        ? '<span style="color:#555;">（空）</span>'
+                        : (char.inventory || []).map((itm, idx) => `
+                        <div style="display: flex; justify-content: space-between; padding: 2px 0;">
+                            <span>${itm.name}${(itm.quantity||1)>1?` <span style="color:#ffb84d;font-size:10px;">×${itm.quantity}</span>`:''}</span>
+                            <button onclick="removeInventoryItem('${charId}', ${idx})" style="background: none; border: none; color: #ff3333; cursor: pointer; font-size: 10px;">移除</button>
+                        </div>`).join('')
+                    }
+                </div>
+                <input type="text" placeholder="手动添加物品，按Enter"
+                       onkeypress="if(event.key==='Enter'&&this.value.trim()){addInventoryItem('${charId}',this.value.trim());this.value='';}"
+                       style="margin-top: 4px;" />
+            </div>
             ${relationsHtml}
         `;
         container.appendChild(item);
     }
+}
+
+// 抽屉背包操作
+function addInventoryItem(charId, itemName) {
+    const char = gameState.characters[charId];
+    if (!char) return;
+    addToInventory(char, itemName);
+    renderDrawerCharacters();
+}
+
+function removeInventoryItem(charId, idx) {
+    const char = gameState.characters[charId];
+    if (!char || !char.inventory) return;
+    char.inventory.splice(idx, 1);
+    renderDrawerCharacters();
 }
 
 // 更新抽屉中的角色字段（性别、年龄等）
@@ -4869,8 +5196,9 @@ function updateDrawerCharField(charId, field, value) {
         const configChar = activeConfig.characters.find(c => c.id === charId);
         if (configChar) configChar[field] = value;
 
-        // 只有在非文本字段时才重新渲染（避免 textarea 输入时频繁渲染）
-        if (field !== 'personality' && field !== 'careerPrompt') {
+        // 文本输入字段不重渲染，避免打断 IME 输入和频繁 DOM 重建
+        const textFields = ['personality', 'careerPrompt', 'career'];
+        if (!textFields.includes(field)) {
             renderDrawerCharacters();
         }
     }
@@ -5122,6 +5450,75 @@ function applyDrawerWorldSetting() {
     }
 
     addLog('世界设定已更新', 'system');
+}
+
+// ===== 物品系统 =====
+
+function addToInventory(char, itemName, qty = 1) {
+    if (!char.inventory) char.inventory = [];
+    const existing = char.inventory.find(i => i.name === itemName);
+    if (existing) {
+        existing.quantity = (existing.quantity || 1) + qty;
+    } else {
+        char.inventory.push({ id: `itm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, name: itemName, quantity: qty });
+    }
+}
+
+function removeFromInventory(char, itemName, qty = 1) {
+    if (!char.inventory) return false;
+    const idx = char.inventory.findIndex(i => i.name === itemName);
+    if (idx === -1) return false;
+    const item = char.inventory[idx];
+    const curQty = item.quantity || 1;
+    if (curQty <= qty) {
+        char.inventory.splice(idx, 1);
+    } else {
+        item.quantity = curQty - qty;
+    }
+    return true;
+}
+
+function processItemAction(char, ia) {
+    if (!ia || !ia.type || !ia.item) return;
+    const itemName = ia.item;
+
+    if (ia.type === 'pick_up') {
+        const roomId = ia.from_room || char.currentRoom;
+        const room = gameState.apartment.rooms[roomId];
+        if (!room) return;
+        const idx = room.items.indexOf(itemName);
+        // 物品不在房间列表里：静默跳过，防止幻象物品
+        if (idx === -1) return;
+        room.items.splice(idx, 1);
+        const configRoom = activeConfig.rooms.find(r => r.id === roomId);
+        if (configRoom) { const ci = configRoom.items.indexOf(itemName); if (ci !== -1) configRoom.items.splice(ci, 1); }
+        renderDrawerRooms();
+        addToInventory(char, itemName);
+        addLog(`${char.name}将「${itemName}」从${room.name}取走，放入背包`, 'system');
+
+    } else if (ia.type === 'put_down') {
+        // 验证 to_room 是合法房间 ID，AI 偶尔会错误地填 "inventory" 等非房间值
+        const requestedRoom = ia.to_room || char.currentRoom;
+        const roomId = gameState.apartment.rooms[requestedRoom] ? requestedRoom : char.currentRoom;
+        const pdQty = ia.quantity || 1;
+        // 只有背包里有才能放下，防止幻象物品进入房间
+        const removed = removeFromInventory(char, itemName, pdQty);
+        if (!removed) return;
+        addRoomItem(roomId, itemName);
+        const pdLabel = pdQty > 1 ? ` ×${pdQty}` : '';
+        addLog(`${char.name}将「${itemName}」${pdLabel}放在了${gameState.apartment.rooms[roomId]?.name || roomId}`, 'system');
+
+    } else if (ia.type === 'give') {
+        const toChar = getCharacterByName(ia.to_char);
+        if (!toChar) return;
+        const gQty = ia.quantity || 1;
+        // 只有背包里有才能赠出
+        const removed = removeFromInventory(char, itemName, gQty);
+        if (!removed) return;
+        addToInventory(toChar, itemName, gQty);
+        const gLabel = gQty > 1 ? ` ×${gQty}` : '';
+        addLog(`${char.name}将「${itemName}」${gLabel}赠给了${ia.to_char}`, 'system');
+    }
 }
 
 // 添加房间物品
