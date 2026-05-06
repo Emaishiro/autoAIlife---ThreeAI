@@ -471,6 +471,14 @@ function updateUI() {
 
     ui.timeMultiplier.innerText = `${gameState.timeMultiplier}x`;
 
+    // 更新速度按钮高亮
+    [ui.speed1x, ui.speed2x, ui.speed5x, ui.speed10x].forEach((btn, i) => {
+        if (btn) {
+            const multipliers = [1, 2, 5, 10];
+            btn.classList.toggle('active', gameState.timeMultiplier === multipliers[i]);
+        }
+    });
+
     // 更新节假日显示
     if (ui.holidayInfo) {
         ui.holidayInfo.innerText = gameState.holidayDescription;
@@ -1285,12 +1293,12 @@ function extractDeepseekResponseContent(data) {
 }
 
 // 调用 DeepSeek API 的通用函数
-async function callDeepseekAPI(messages, useJsonFormat = true, maxTokens = 2000) {
+async function callDeepseekAPI(messages, useJsonFormat = true, maxTokens = 8000) {
     const isThinking = API_CONFIG.THINKING;
     const requestBody = {
         model: API_CONFIG.MODEL,
         messages: messages,
-        max_tokens: Math.min(isThinking ? Math.max(maxTokens, 8000) : maxTokens, 8192)
+        max_tokens: isThinking ? Math.max(maxTokens, 16000) : maxTokens
     };
 
     if (!isThinking) {
@@ -1302,8 +1310,7 @@ async function callDeepseekAPI(messages, useJsonFormat = true, maxTokens = 2000)
         requestBody.thinking = { type: 'enabled' };
     }
 
-    // 思考模式不支持 json_object 格式，需靠 prompt 引导
-    if (useJsonFormat && !isThinking) {
+    if (useJsonFormat) {
         requestBody.response_format = { type: 'json_object' };
     }
 
@@ -1510,29 +1517,29 @@ ${roomList}
 
 【写作风格要求——极为重要】
 "thought" 和 "action" 必须像优秀短篇小说里的句子，而非游戏任务说明。具体要求：
-- "thought"：用第三人称写角色内心世界，要有具体的感官细节、情绪温度和性格逻辑，不得写成"他想去做某事"的简单陈述。要有画面感，有潜台词。
-- "action"：描写行为的过程和细节，包括肢体动作、神态、环境感受，如同电影镜头，而非流水账。避免"他去做了X"这种干燥写法。
-- "result"：要有余韵，不只是陈述结果，要带出一点情绪或感受。
-- "narrative"：用散文笔法串联${actionCountText}人，要有意象、有节奏，像一段精炼的小说场景描写。
+- "thought"：用第三人称写角色内心世界，要有具体的感官细节、情绪温度和性格逻辑，不得写成"他想去做某事"的简单陈述。要有画面感，有潜台词，可以有联想、回忆、矛盾感。
+- "action"：描写行为的全过程和细节，包括肢体动作、神态、环境感受、物件触感，如同电影镜头，而非流水账。可以包含短促的心理插入，让行为更有层次。
+- "result"：要有余韵，不只是陈述结果，要带出一点情绪或感受，甚至留下悬念或微小的转变。
+- "narrative"：用散文笔法串联${actionCountText}人，要有意象、有节奏、有空间感，像一段精炼的小说场景描写，让读者感受到同一时间轴上不同角色的呼吸。
 
 【反例——禁止这样写】
 思考："精力低了，应该去厨房吃东西补充能量。"
 行为："角色保存文件，走向厨房，询问是否可以一起吃东西。"
 
 【正例——应该这样写】
-思考："脑子像是被抽空了一层，屏幕上的字开始发虚。不是累，是那种过载之后的空白——饿也是真的饿，只是这会儿连饥饿感都变得很远。"
-行为："推开房间的门，走廊里有点冷，没去开灯，摸黑走进厨房，打开冰箱，冷光照在脸上，就那么站着，盯着里面看了好一会儿，才慢慢伸手拿出食物。"
+思考："脑子像是被抽空了一层，屏幕上的字开始发虚。不是累，是那种过载之后的空白——饿也是真的饿，只是这会儿连饥饿感都变得很远。窗外有风，她听见窗框在轻微震动，不知道为什么这个声音让她觉得有点安心。"
+行为："推开房间的门，走廊里有点冷，没去开灯，摸黑走进厨房，打开冰箱，冷光照在脸上，就那么站着，盯着里面看了好一会儿，才慢慢伸手拿出食物。冰箱的嗡嗡声在黑暗里显得格外清晰，她把盒子放在台面上，没有急着打开，就先靠在那里，等自己的心跳稳下来。"
 
 你必须严格返回 JSON 格式，包含以下字段：
 1. "actions": 数组，包含${actionCountText}个角色的行为，每个元素包含：
    - "character": 角色名称（${chars.map(c => `"${c.name}"`).join(', ')} 之一）
-   - "thought": 角色内心世界（文学化，100-170字）。⚠️ 值必须是普通 JSON 字符串，直接写内容，禁止用（）或()包裹整段文字
-   - "action": 行为过程描写（文学化，100-200字）
-   - "result": 结果与余韵（50-100字）
+   - "thought": 角色内心世界（文学化，150-250字）。⚠️ 值必须是普通 JSON 字符串，直接写内容，禁止用（）或()包裹整段文字
+   - "action": 行为过程描写（文学化，150-280字）
+   - "result": 结果与余韵（80-150字）
    - "duration": 行为持续时间（分钟，5-120之间）
    - "stat_changes": { "mood": -10到+10, "energy": -20到+10, "satiety": -15到+25, "hygiene": -15到+10, "wallet": 消费变化 }
    - "interaction_with": 互动的角色名（无则为null）
-   - "dialogue": （当interaction_with不为null时必填）角色间的实际对话，数组，4-10句，严格符合各自性格，来回自然流动，格式：[{"speaker": "角色名", "line": "对话内容"}, ...]
+   - "dialogue": （当interaction_with不为null时必填）角色间的实际对话，数组，6-14句，严格符合各自性格，来回自然流动，对话要有情绪起伏，格式：[{"speaker": "角色名", "line": "对话内容"}, ...]
    - "new_room": 目标房间英文ID
    - "actionType": 行为类型（primary_work|secondary_work|daily_life|leisure|rest|social）
    - "workOutput": （可选）创作成果，结构：{ "title": "作品名", "type": "illustration|food_photo|video", "description": "30字内描述" }
@@ -1541,7 +1548,7 @@ ${roomList}
    - "consume_items": （可选）本次行为中实际用尽或消耗掉的物品，结构：[{"item": "物品名称", "from": "inventory（背包）或 房间英文ID", "quantity": 数量（可选，默认1）}]。规则：①仅填写真正被用完的消耗品，如食材、零食、饮料、面膜、卫生纸等；②家具、家电、工具等耐用品不填；③物品必须确实存在于对应位置；④from填"inventory"表示消耗角色背包里的物品，填房间ID表示消耗房间里的物品；⑤有quantity字段时可消耗多份（如吃掉2个包子填quantity:2），背包里剩余份数会相应减少；⑥quantity不得超过背包实际持有数量
    - "item_actions": （可选）物品互动，结构：[{"type": "pick_up|put_down|give", "item": "物品名称", "quantity": 数量（可选，默认1）, "from_room": "房间ID（pick_up时填）", "to_room": "房间ID（put_down时填，留空则用当前房间）", "to_char": "角色名（give时填）"}]。规则：①pick_up从房间拾取物品入背包；②put_down将背包物品放到房间；③give将背包物品赠给同房间角色；④物品必须确实存在于对应位置；⑤give时quantity可大于1（如送2个饼干）
 
-2. "narrative": 散文化场景叙述（80-150字）
+2. "narrative": 散文化场景叙述（150-280字）
 3. "time_passed": 游戏时间流逝分钟数
 4. "new_npcs": （可选）本轮行为中自然出现的新配角，数组，每项：{"name": "姓名或称呼", "role": "身份/职业", "note": "与角色的关系或特点"}。仅当确实出现了有意义的新面孔时填写，不要强行创造。
 5. "love_events": （可选）当本轮发生重要感情事件时填写，数组，每项：{"type": "confession（表白）|accepted（接受）|proposal（求婚）|married（结婚）|breakup（分手）|divorce（离婚）", "from": "角色名", "to": "角色名", "description": "一句话描述"}。规则：①好感值双方≥65时角色才可能表白；②双方≥82且已是恋人才可求婚；③表白/求婚是否成功由对方角色性格决定；④分手/离婚需一方明显心灰意冷；⑤不要强行创造，只在叙事中确实发生时填写。
@@ -2037,8 +2044,31 @@ async function generateArtworkImagePrompt(char, workOutput, action) {
     }
 
     const styleHint = getStyleHint(char.name, workOutput.type);
+    const isNatural = getArtworkPromptMode() === 'natural';
 
-    const messages = [
+    const messages = isNatural ? [
+        {
+            role: 'system',
+            content: '你是专业的图像创作描述师，擅长用自然语言生动描绘视觉画面。判断标准：作品本身必须是视觉产物（画、插画、照片、视频截图）才返回 applicable: true。代码、程序、文字报告等非视觉产物返回 applicable: false。严格返回JSON，不含其他文字。'
+        },
+        {
+            role: 'user',
+            content: `角色：${char.name}（${char.career}，${char.age}岁）
+作品类型：${workOutput.type}
+作品描述：${workOutput.description}
+完成背景：${action.result ? action.result.slice(0, 80) : ''}
+风格参考：${styleHint}
+
+请判断并返回JSON（无其他文字）：
+{
+  "applicable": true/false,
+  "description": "中文自然语言描述（60-100字，生动描绘画面场景、氛围、光线、细节，false时留空）",
+  "prompt": "英文自然语言描述（40-80词，适合DALL-E 3等自然语言图像生成器，false时留空）",
+  "negativePrompt": "",
+  "style": "风格标签，false时留空"
+}`
+        }
+    ] : [
         {
             role: 'system',
             content: '你是专业的AI绘图Prompt工程师，精通Stable Diffusion和Midjourney提示词。判断标准：作品本身必须是一件视觉产物（如一幅画、一张插画、一张照片、一帧视频截图），才返回 applicable: true 并生成提示词。若作品是代码、程序、算法、软件、文字报告、工程项目等非视觉产物必须返回 applicable: false。严格返回JSON，不含其他文字。'
@@ -2425,6 +2455,8 @@ async function gameLoop() {
 
     gameState.isProcessing = true;
 
+    try {
+
     // 更新节假日信息
     const holidayInfo = CalendarPlugin.getHolidayInfo(gameState.currentTime);
     gameState.currentHoliday = holidayInfo;
@@ -2546,6 +2578,8 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
         // 处理每个角色的行为
         // 用 Set 记录本轮已展示的对话内容签名，避免同一段对话被多个角色重复渲染
         const shownDialogueContent = new Set();
+        // 用 Set 记录本轮已展示的互动标题（名字排序后的 key），避免同一对互动打两次标题
+        const shownInteractionPairs = new Set();
         for (const action of decision.actions) {
             const char = getCharacterByName(action.character);
             if (!char) continue;
@@ -2754,7 +2788,8 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
                             if (promptResult.description) {
                                 addLog(`  ${promptResult.description}`, 'artwork');
                             }
-                            addLog(`[SD Prompt] ${promptResult.prompt}`, 'artwork-prompt');
+                            const promptLabel = getArtworkPromptMode() === 'natural' ? '[自然描述]' : '[SD Prompt]';
+                            addLog(`${promptLabel} ${promptResult.prompt}`, 'artwork-prompt');
                             if (promptResult.negativePrompt) {
                                 addLog(`[Negative] ${promptResult.negativePrompt}`, 'artwork-prompt');
                             }
@@ -2777,6 +2812,7 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
                                 prompt: promptResult.prompt || '',
                                 negativePrompt: promptResult.negativePrompt || '',
                                 style: promptResult.style || '',
+                                mode: getArtworkPromptMode(),
                                 gameTime: gameState.currentTime ? formatGameTime(new Date(gameState.currentTime)) : '',
                                 day: gameState.dayCount || 1
                             });
@@ -2790,14 +2826,22 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
 
             // 记录互动（累积到当天记录，供夜晚统一结算）
             if (action.interaction_with) {
-                addLog(`${char.name}与${action.interaction_with}进行了互动`, 'interaction');
+                const pairKey = [char.name, ...action.interaction_with.split('、')].sort().join(',');
+                if (!shownInteractionPairs.has(pairKey)) {
+                    shownInteractionPairs.add(pairKey);
+                    addLog(`${char.name}与${action.interaction_with}进行了互动`, 'interaction');
+                }
                 // 用对话内容签名判重，避免同一段对话因出现在多个角色的 action 里而重复打印
                 if (Array.isArray(action.dialogue) && action.dialogue.length > 0) {
                     const dialogueKey = action.dialogue.map(d => `${d.speaker}:${d.line}`).join('\n');
                     if (!shownDialogueContent.has(dialogueKey)) {
                         shownDialogueContent.add(dialogueKey);
                         for (const line of action.dialogue) {
-                            addLog(`💬 ${line.speaker}：「${line.line}」`, 'interaction');
+                            const speaker = line.speaker || '';
+                            // AI 有时用 text/content/dialogue 代替 line 字段
+                            const text = line.line ?? line.text ?? line.content ?? line.dialogue ?? '';
+                            if (!speaker || !text) continue;
+                            addLog(`💬 ${speaker}：「${text}」`, 'interaction');
                         }
                     }
                 }
@@ -2896,8 +2940,13 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
         gameState.lastActionTime = new Date(gameState.currentTime);
     }
 
-    gameState.isProcessing = false;
-    updateUI();
+    } catch (loopErr) {
+        console.error('gameLoop 异常:', loopErr);
+        addLog(`本轮生成出错已跳过: ${loopErr.message}`, 'error');
+    } finally {
+        gameState.isProcessing = false;
+        updateUI();
+    }
 
     // 根据时间倍率设置下一次循环
     if (!gameState.shouldStop && !gameState.isPaused) {
@@ -3800,6 +3849,11 @@ function initSetupPanel() {
     setupEventListeners();
     setupLoadDataListeners();
     syncWorldTabUI();
+    const saved = localStorage.getItem('deepseek_api_key');
+    if (saved) {
+        const input = document.getElementById('setup-api-key');
+        if (input) input.value = saved;
+    }
 }
 
 // 标签页导航
@@ -4965,6 +5019,7 @@ function startGameFromSetup() {
     // 获取API Key
     const apiKeyInput = document.getElementById('setup-api-key');
     gameState.apiKey = apiKeyInput.value.trim();
+    if (gameState.apiKey) localStorage.setItem('deepseek_api_key', gameState.apiKey);
 
     // 同步API Key到右侧面板的输入框
     ui.apiKeyInput.value = gameState.apiKey;
@@ -5381,6 +5436,18 @@ function renderDrawerWorld() {
             <div id="drawer-npc-list"></div>
             <button onclick="addDrawerNPC()" style="margin-top: 6px; padding: 5px 12px; background: #1a3a1a; color: #00ff41; border: 1px solid #00ff41; border-radius: 4px; cursor: pointer; font-size: 11px;">+ 添加配角</button>
 
+            <div style="color: #aaa; font-size: 12px; margin: 18px 0 8px; border-top: 1px solid #222; padding-top: 14px;">日志字体大小</div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <input
+                    type="range"
+                    id="drawer-log-fontsize"
+                    min="10" max="22" step="1"
+                    style="flex: 1; accent-color: #00ff41;"
+                    oninput="applyLogFontSize(this.value); document.getElementById('drawer-log-fontsize-val').textContent = this.value + 'px';"
+                />
+                <span id="drawer-log-fontsize-val" style="color: #00ff41; font-size: 12px; min-width: 32px; text-align: right;"></span>
+            </div>
+
             <button
                 onclick="applyDrawerWorldSetting()"
                 style="margin-top: 14px; width: 100%; padding: 9px; background: #00a060; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;"
@@ -5390,6 +5457,9 @@ function renderDrawerWorld() {
     document.getElementById('drawer-scene-name').value = sceneName;
     document.getElementById('drawer-world-setting').value = worldSetting;
     document.getElementById('drawer-start-time').value = currentTime;
+    const savedSize = parseInt(localStorage.getItem('log_font_size') || '14');
+    const slider = document.getElementById('drawer-log-fontsize');
+    if (slider) { slider.value = savedSize; document.getElementById('drawer-log-fontsize-val').textContent = savedSize + 'px'; }
     renderDrawerNPCList();
 }
 
@@ -5562,10 +5632,31 @@ if (document.readyState === 'loading') {
 // ==================== 作品提示词记录弹窗 ====================
 const ARTWORK_LOG_KEY = 'artwork_prompt_log';
 const ARTWORK_LOG_MAX = 50;
+const ARTWORK_MODE_KEY = 'artwork_prompt_mode';
+
+function getArtworkPromptMode() {
+    return localStorage.getItem(ARTWORK_MODE_KEY) || 'sd';
+}
+
+function toggleArtworkPromptMode() {
+    const next = getArtworkPromptMode() === 'sd' ? 'natural' : 'sd';
+    localStorage.setItem(ARTWORK_MODE_KEY, next);
+    updateArtworkModeToggleBtn();
+    renderArtworkLog();
+}
+
+function updateArtworkModeToggleBtn() {
+    const btn = document.getElementById('artwork-mode-toggle-btn');
+    if (!btn) return;
+    const mode = getArtworkPromptMode();
+    btn.textContent = mode === 'sd' ? 'SD模式' : '自然语言';
+    btn.style.background = mode === 'sd' ? '#4a5a7a' : '#3a6a4a';
+}
 
 function openArtworkLogModal() {
     const modal = document.getElementById('artwork-log-modal');
     modal.style.display = 'flex';
+    updateArtworkModeToggleBtn();
     renderArtworkLog();
 }
 
@@ -5588,11 +5679,17 @@ function renderArtworkLog() {
         const realIdx = log.length - 1 - reversedIdx;
         const card = document.createElement('div');
         card.style.cssText = 'background:#2a2a3e; border:1px solid #3a3a5a; border-radius:6px; padding:12px 14px;';
+        const isNaturalEntry = item.mode === 'natural';
+        const modeTag = isNaturalEntry
+            ? '<span style="color:#7ec8a0; font-size:10px; background:#1a3a2a; border-radius:3px; padding:1px 5px; margin-left:6px;">自然语言</span>'
+            : '<span style="color:#8ab4d4; font-size:10px; background:#1a2a3a; border-radius:3px; padding:1px 5px; margin-left:6px;">SD</span>';
+        const promptLabel = isNaturalEntry ? '自然描述' : 'SD Prompt';
         card.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
                 <div>
                     <span style="color:#b0d4f1; font-weight:bold; font-size:13px;">${item.charName}</span>
                     <span style="color:#ccc; font-size:13px; margin-left:6px;">${item.title ? '《' + item.title + '》' : '（无标题）'}</span>
+                    ${modeTag}
                     <span style="color:#666; font-size:11px; margin-left:8px;">${item.type || ''} · 第${item.day || 1}天 ${item.gameTime || ''}</span>
                 </div>
                 <div style="display:flex; gap:6px; flex-shrink:0; margin-left:10px;">
@@ -5600,8 +5697,8 @@ function renderArtworkLog() {
                     <button onclick="deleteArtworkEntry(${realIdx})" style="padding:3px 9px; background:#5a3a3a; color:#ffaeae; border:none; border-radius:3px; cursor:pointer; font-size:11px;">删除</button>
                 </div>
             </div>
-            ${item.description ? `<div style="color:#aaa; font-size:12px; margin-bottom:6px;">${item.description}</div>` : ''}
-            <div style="color:#e0e0e0; font-size:11px; background:#1a1a2e; border-radius:4px; padding:7px 10px; margin-bottom:4px; word-break:break-all;">${item.prompt || ''}</div>
+            ${item.description ? `<div style="color:${isNaturalEntry ? '#c8ddc8' : '#aaa'}; font-size:${isNaturalEntry ? '13px' : '12px'}; margin-bottom:6px; line-height:1.5;">${item.description}</div>` : ''}
+            ${item.prompt ? `<div style="color:#e0e0e0; font-size:11px; background:#1a1a2e; border-radius:4px; padding:7px 10px; margin-bottom:4px; word-break:break-all;"><span style="color:#666; margin-right:4px;">${promptLabel}:</span>${item.prompt}</div>` : ''}
             ${item.negativePrompt ? `<div style="color:#999; font-size:11px; background:#1a1a2e; border-radius:4px; padding:5px 10px; word-break:break-all;">Negative: ${item.negativePrompt}</div>` : ''}
         `;
         list.appendChild(card);
@@ -5619,10 +5716,16 @@ function copyArtworkEntry(idx) {
     const log = JSON.parse(localStorage.getItem(ARTWORK_LOG_KEY) || '[]');
     const item = log[idx];
     if (!item) return;
-    const text = [
+    const isNaturalEntry = item.mode === 'natural';
+    const text = isNaturalEntry ? [
         item.title ? `作品：${item.title}` : '',
         item.description ? `描述：${item.description}` : '',
-        `Prompt: ${item.prompt}`,
+        item.prompt ? `自然描述: ${item.prompt}` : '',
+        item.style ? `Style: ${item.style}` : ''
+    ].filter(Boolean).join('\n') : [
+        item.title ? `作品：${item.title}` : '',
+        item.description ? `描述：${item.description}` : '',
+        item.prompt ? `Prompt: ${item.prompt}` : '',
         item.negativePrompt ? `Negative: ${item.negativePrompt}` : '',
         item.style ? `Style: ${item.style}` : ''
     ].filter(Boolean).join('\n');
@@ -5654,6 +5757,13 @@ function clearArtworkLog() {
     renderArtworkLog();
 }
 
+function applyLogFontSize(size) {
+    const px = Math.max(10, Math.min(22, parseInt(size)));
+    const log = document.getElementById('game-log');
+    if (log) log.style.fontSize = px + 'px';
+    localStorage.setItem('log_font_size', px);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('open-artwork-log-btn').addEventListener('click', openArtworkLogModal);
     document.getElementById('close-artwork-log-btn').addEventListener('click', closeArtworkLogModal);
@@ -5663,6 +5773,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === e.currentTarget) closeArtworkLogModal();
     });
     initModelToggle();
+    applyLogFontSize(localStorage.getItem('log_font_size') || '14');
 
     // 尝试加载自动存档
     const autoSaveLoaded = tryLoadAutoSaveOnStartup();

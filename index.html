@@ -6,7 +6,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#0d0d0d">
-    <title>AI 觉醒：文字生活模拟</title>
+    <title>文字生活模拟</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -147,7 +147,6 @@
 
     <div id="game-container">
         <header>
-            <h1>公寓生活模拟器</h1>
             <div id="status-bar">
                 <span>游戏时间: <span id="game-time">2025年03月04日 08:00</span></span>
                 <span>现实时间: <span id="real-time">--:--</span></span>
@@ -182,16 +181,19 @@
             <div id="api-config">
                 <input type="password" id="api-key" placeholder="输入 DeepSeek API Key">
                 <span id="api-key-status" style="font-size: 11px; color: #888; display: none;">✓ API Key已设置</span>
-                <div id="model-toggle" style="display: flex; gap: 6px; margin-top: 8px; align-items: center; flex-wrap: wrap;">
-                    <button id="model-v4-btn" class="model-btn active">V4 Flash</button>
-                    <button id="model-v4pro-btn" class="model-btn">V4 Pro</button>
-                    <span id="model-label" style="font-size: 11px; color: #888;">新模型·思考模式</span>
+                <div id="model-toggle">
+                    <div class="ctrl-btn-group">
+                        <button id="model-v4-btn" class="model-btn active">V4 Flash</button>
+                        <button id="model-v4pro-btn" class="model-btn">V4 Pro</button>
+                    </div>
+                    <span id="model-label">新模型·思考模式</span>
                 </div>
-                <div id="thinking-style-toggle" style="display: flex; gap: 6px; margin-top: 6px; align-items: center; flex-wrap: wrap;">
-                    <span style="font-size: 11px; color: #888;">思维链:</span>
-                    <button id="thinking-default-btn" class="model-btn active">默认</button>
-                    <button id="thinking-inner-btn" class="model-btn">角色沉浸</button>
-                    <button id="thinking-analysis-btn" class="model-btn">纯分析</button>
+                <div id="thinking-style-toggle">
+                    <div class="ctrl-btn-group">
+                        <button id="thinking-default-btn" class="model-btn active">默认</button>
+                        <button id="thinking-inner-btn" class="model-btn">角色<br>沉浸</button>
+                        <button id="thinking-analysis-btn" class="model-btn">纯分析</button>
+                    </div>
                 </div>
                 <button id="start-btn">开始模拟</button>
                 <button id="pause-btn" disabled>暂停模拟</button>
@@ -272,6 +274,7 @@
             <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 18px; border-bottom:1px solid #3a3a5a; flex-shrink:0;">
                 <h3 style="margin:0; color:#b0d4f1; font-size:15px;">🖼️ 作品提示词记录</h3>
                 <div style="display:flex; gap:8px; align-items:center;">
+                    <button id="artwork-mode-toggle-btn" onclick="toggleArtworkPromptMode()" style="padding:5px 12px; background:#4a5a7a; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px;">SD模式</button>
                     <button id="artwork-log-export-btn" style="padding:5px 12px; background:#4a7fa5; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px;">一键导出</button>
                     <button id="artwork-log-clear-btn" style="padding:5px 12px; background:#7a3a3a; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:12px;">清空记录</button>
                     <button id="close-artwork-log-btn" style="background:none; border:none; color:#888; font-size:18px; cursor:pointer; line-height:1;">✕</button>
