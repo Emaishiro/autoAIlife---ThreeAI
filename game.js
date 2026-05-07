@@ -2111,7 +2111,7 @@ async function doNightlyRelationshipReview() {
     // 构建今日有互动的配对集合（排序后的名字对）
     const interactedNamePairs = new Set();
     for (const item of gameState.dailyInteractions) {
-        const targets = item.with.split('、').map(s => s.trim());
+        const targets = String(item.with).split('、').map(s => s.trim());
         for (const t of targets) {
             if (t) interactedNamePairs.add([item.actor, t].sort().join(','));
         }
@@ -2853,7 +2853,9 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
                 }
                 gameState.dailyInteractions.push({
                     actor: char.name,
-                    with: action.interaction_with,
+                    with: Array.isArray(action.interaction_with)
+                        ? action.interaction_with.join('、')
+                        : String(action.interaction_with),
                     thought: action.thought || '',
                     action: action.action || '',
                     result: action.result || '',
