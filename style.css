@@ -1195,6 +1195,60 @@ button:hover {
     font-size: 12px;
 }
 
+.preset-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+}
+
+.template-section-header {
+    color: #00ff41;
+    font-size: 13px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #222;
+}
+
+.user-template-meta {
+    color: #555;
+    font-size: 11px;
+    margin-top: 8px;
+}
+
+.user-template-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.user-template-btn {
+    background: #1a1a1a;
+    border: 1px solid #444;
+    color: #999;
+    padding: 3px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.2s;
+}
+
+.user-template-btn:hover {
+    border-color: #00ff41;
+    color: #00ff41;
+}
+
+.user-template-btn.delete:hover {
+    border-color: #ff5555;
+    color: #ff5555;
+}
+
+.user-template-controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+}
+
 /* 角色和房间编辑 */
 .char-controls, .room-controls {
     margin-bottom: 20px;

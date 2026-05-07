@@ -21,6 +21,10 @@ function escapeAttr(str) {
     return String(str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
+function escapeHtml(str) {
+    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // 主游戏配置对象
 const GAME_CONFIG = {
     version: "2.0",
@@ -3883,6 +3887,15 @@ function renderPresetCards() {
     const container = document.getElementById('preset-cards-container');
     container.innerHTML = '';
 
+    const builtinHeader = document.createElement('div');
+    builtinHeader.className = 'template-section-header';
+    builtinHeader.textContent = '内置预设';
+    container.appendChild(builtinHeader);
+
+    const builtinGrid = document.createElement('div');
+    builtinGrid.className = 'preset-cards-grid';
+    container.appendChild(builtinGrid);
+
     for (const [presetId, preset] of Object.entries(GAME_PRESETS)) {
         const card = document.createElement('div');
         card.className = 'preset-card';
@@ -3896,8 +3909,37 @@ function renderPresetCards() {
         `;
 
         card.addEventListener('click', () => selectPreset(presetId));
-        container.appendChild(card);
+        builtinGrid.appendChild(card);
     }
+
+    const userHeader = document.createElement('div');
+    userHeader.className = 'template-section-header';
+    userHeader.style.marginTop = '20px';
+    userHeader.textContent = '我的模板';
+    container.appendChild(userHeader);
+
+    const userGrid = document.createElement('div');
+    userGrid.className = 'preset-cards-grid';
+    userGrid.id = 'user-templates-container';
+    container.appendChild(userGrid);
+
+    renderUserTemplateCards();
+
+    const controls = document.createElement('div');
+    controls.className = 'user-template-controls';
+    controls.innerHTML = `
+        <button class="btn-primary" onclick="saveCurrentConfigAsTemplate()" style="flex:1;">💾 保存当前配置为模板</button>
+        <button class="btn-primary" id="import-template-btn" style="flex:1; background:#1a1a1a; border-color:#555; color:#aaa;">📂 导入模板文件</button>
+        <input type="file" id="import-template-input" style="display:none;" accept=".json,.txt">
+    `;
+    container.appendChild(controls);
+
+    const importInput = controls.querySelector('#import-template-input');
+    controls.querySelector('#import-template-btn').addEventListener('click', () => importInput.click());
+    importInput.addEventListener('change', e => {
+        importTemplateFromFile(e.target.files[0]);
+        e.target.value = '';
+    });
 }
 
 // 选择预设
@@ -3910,6 +3952,186 @@ function selectPreset(presetId) {
     renderRoomEditor();
     syncWorldTabUI();
 }
+
+// ===== 用户模板系统 =====
+
+const TEMPLATES_STORAGE_KEY = 'apartment_sim_templates';
+
+function loadUserTemplates() {
+    try {
+        const raw = localStorage.getItem(TEMPLATES_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+}
+
+function _saveUserTemplates(templates) {
+    localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
+}
+
+function saveCurrentConfigAsTemplate() {
+    const name = prompt('请输入模板名称：', '');
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (!trimmed) { alert('模板名称不能为空'); return; }
+    const description = prompt('请输入模板描述（可选，直接回车跳过）：', '') || '';
+
+    const templates = loadUserTemplates();
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const createdAt = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+    templates.push({
+        id: 'template_' + Date.now(),
+        name: trimmed,
+        description: description.trim(),
+        createdAt,
+        config: deepClone(setupPanelState.currentConfig)
+    });
+    _saveUserTemplates(templates);
+    renderPresetCards();
+}
+
+function deleteUserTemplate(templateId) {
+    if (!confirm('确认删除此模板？此操作不可撤销。')) return;
+    const templates = loadUserTemplates().filter(t => t.id !== templateId);
+    _saveUserTemplates(templates);
+    if (setupPanelState.selectedPreset === 'user_' + templateId) {
+        setupPanelState.selectedPreset = 'default_threegirls';
+    }
+    renderPresetCards();
+}
+
+function exportUserTemplate(templateId) {
+    const template = loadUserTemplates().find(t => t.id === templateId);
+    if (!template) return;
+
+    const exportData = {
+        type: 'apartment_sim_template',
+        version: '1.0',
+        name: template.name,
+        description: template.description,
+        createdAt: template.createdAt,
+        config: template.config
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `template_${template.name.replace(/[^\w一-鿿]/g, '_')}_${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function selectUserTemplate(templateId) {
+    const template = loadUserTemplates().find(t => t.id === templateId);
+    if (!template) return;
+    setupPanelState.selectedPreset = 'user_' + templateId;
+    setupPanelState.currentConfig = deepClone(template.config);
+    syncSetupRelationshipValuesFromConfig();
+    renderPresetCards();
+    renderCharacterEditor();
+    renderRoomEditor();
+    syncWorldTabUI();
+}
+
+function importTemplateFromFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        let data;
+        try { data = JSON.parse(e.target.result); } catch { alert('文件解析失败，请确认是有效的 JSON 文件'); return; }
+
+        let config = null;
+        let name = '';
+        let description = '';
+
+        if (data.type === 'apartment_sim_template' && data.config) {
+            config = data.config;
+            name = data.name || '导入的模板';
+            description = data.description || '';
+        } else if (data.configSnapshot) {
+            config = data.configSnapshot;
+            name = '来自存档的模板';
+        } else if (data.characters || data.rooms) {
+            config = data;
+            name = '导入的配置';
+        } else {
+            const firstSaveKey = Object.keys(data).find(k => k.startsWith('apartment_sim_save_'));
+            if (firstSaveKey && data[firstSaveKey]?.configSnapshot) {
+                config = data[firstSaveKey].configSnapshot;
+                name = '来自存档文件的模板';
+            }
+        }
+
+        if (!config) { alert('无法识别文件格式，请确认是模板文件或存档文件'); return; }
+
+        const inputName = prompt('请输入模板名称：', name);
+        if (inputName === null) return;
+        const trimmed = (inputName || '').trim() || name;
+
+        const templates = loadUserTemplates();
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const createdAt = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+        templates.push({
+            id: 'template_' + Date.now(),
+            name: trimmed,
+            description: description,
+            createdAt,
+            config: deepClone(config)
+        });
+        _saveUserTemplates(templates);
+        renderPresetCards();
+        alert(`模板「${trimmed}」已导入成功`);
+    };
+    reader.readAsText(file, 'utf-8');
+}
+
+function renderUserTemplateCards() {
+    const container = document.getElementById('user-templates-container');
+    if (!container) return;
+
+    const templates = loadUserTemplates();
+    if (templates.length === 0) {
+        container.innerHTML = '<div style="color:#555; font-size:12px; padding:6px 0;">暂无自定义模板，配置好角色和房间后点击下方按钮保存。</div>';
+        return;
+    }
+
+    container.innerHTML = '';
+    for (const template of templates) {
+        const card = document.createElement('div');
+        card.className = 'preset-card user-template-card';
+        if (setupPanelState.selectedPreset === 'user_' + template.id) {
+            card.classList.add('selected');
+        }
+
+        const charCount = template.config?.characters?.length || 0;
+        const roomCount = template.config?.rooms?.length || 0;
+        const sceneName = template.config?.sceneName || '';
+        const hasWorld = !!(template.config?.worldSetting);
+
+        card.innerHTML = `
+            <div class="preset-card-title">${escapeHtml(template.name)}</div>
+            ${template.description ? `<div class="preset-card-desc">${escapeHtml(template.description)}</div>` : ''}
+            <div class="user-template-meta">${sceneName ? escapeHtml(sceneName) + ' · ' : ''}${charCount} 角色 · ${roomCount} 房间${hasWorld ? ' · 含世界设定' : ''} · ${escapeHtml(template.createdAt || '')}</div>
+            <div class="user-template-actions">
+                <button class="user-template-btn" onclick="event.stopPropagation(); exportUserTemplate('${escapeAttr(template.id)}')">导出</button>
+                <button class="user-template-btn delete" onclick="event.stopPropagation(); deleteUserTemplate('${escapeAttr(template.id)}')">删除</button>
+            </div>
+        `;
+
+        card.addEventListener('click', () => selectUserTemplate(template.id));
+        container.appendChild(card);
+    }
+}
+
+// ===== 用户模板系统结束 =====
 
 function updateSceneName(value) {
     setupPanelState.currentConfig.sceneName = value || '公寓';
