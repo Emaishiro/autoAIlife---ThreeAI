@@ -58,7 +58,7 @@ const GAME_CONFIG = {
         },
         {
             id: "sanjiu",
-            name: "三玖",
+            name: "晓雨",
             color: "#ff79c6",
             gender: "female",
             age: 21,
@@ -82,7 +82,7 @@ const GAME_CONFIG = {
         },
         {
             id: "wuyue",
-            name: "五月",
+            name: "宁宁",
             color: "#ffb86c",
             gender: "female",
             age: 21,
@@ -151,16 +151,16 @@ const GAME_CONFIG = {
         },
         {
             id: "bedroom2",
-            name: "三玖的卧室",
-            description: "三玖的卧室，布置简约，有淡淡的清香。",
+            name: "晓雨的卧室",
+            description: "晓雨的卧室，布置简约，有淡淡的清香。",
             items: ["单人床", "梳妆台", "衣柜", "小沙发"],
             isBedroom: true,
             ownerCharId: "sanjiu"
         },
         {
             id: "bedroom3",
-            name: "五月的卧室",
-            description: "五月的卧室，稍微有些杂乱，零食包装袋随处可见。",
+            name: "宁宁的卧室",
+            description: "宁宁的卧室，稍微有些杂乱，零食包装袋随处可见。",
             items: ["单人床", "书桌", "衣柜", "零食箱"],
             isBedroom: true,
             ownerCharId: "wuyue"
@@ -174,7 +174,7 @@ const GAME_CONFIG = {
 const GAME_PRESETS = {
     "default_threegirls": {
         id: "default_threegirls",
-        label: "默认：惠舞/三玖/五月",
+        label: "默认：惠舞/晓雨/宁宁",
         description: "三室一厅公寓，三位性格各异的室友",
         config: deepClone(GAME_CONFIG)
     },
@@ -613,8 +613,8 @@ function getRoomOccupants(roomId) {
 // 角色颜色映射
 const characterColors = {
     '惠舞': 'huiwu',
-    '三玖': 'sanjiu',
-    '五月': 'wuyue'
+    '晓雨': 'sanjiu',
+    '宁宁': 'wuyue'
 };
 
 // 从消息中提取第一个角色名称
@@ -869,7 +869,7 @@ function generateRestActionFromPool(character, otherCharacters) {
                 effort: 'minimal'
             }
         ],
-        '三玖': [
+        '晓雨': [
             {
                 thought: "眼睛太累了，不适合再看画册。看部喜欢的电影，让画面和音乐把自己包裹起来，忘记疲劳。",
                 action: "回到卧室，拉上窗帘，打开笔记本，选了一部很久没看的老电影，蜷在被子里看起来",
@@ -896,7 +896,7 @@ function generateRestActionFromPool(character, otherCharacters) {
                 effort: 'medium'
             }
         ],
-        '五月': [
+        '宁宁': [
             {
                 thought: "需要舒服地坐着，翻翻时尚杂志，吃点喜欢的零食，这是最简单有效的放松方式。",
                 action: "窝进客厅的懒人沙发，翻出收藏的时尚杂志，咔嚓咔嚓地吃着坚果和蜜饯",
@@ -1107,6 +1107,26 @@ function cleanAndParseJSON(rawContent) {
             } catch (e3) { /* 继续 */ }
         }
 
+        // 处理 JSON 末尾被截断（无位置信息）
+        if (e.message.includes('Unexpected end of JSON')) {
+            // 从后往前找最后一个看起来完整的字段结束点：`",` 或 `"}` 或 `"]`
+            const candidates = [];
+            for (let i = cleaned.length - 1; i > 0; i--) {
+                if (cleaned[i] === ',' || cleaned[i] === '}' || cleaned[i] === ']') {
+                    if (cleaned[i - 1] === '"') {
+                        candidates.push(i);
+                        if (candidates.length >= 5) break; // 最多往回尝试5个候选点
+                    }
+                }
+            }
+            for (const cutAt of candidates) {
+                try {
+                    const candidate = cleaned.substring(0, cutAt + 1);
+                    return JSON.parse(repairJSONStrings(candidate));
+                } catch (_) { /* 继续下一个候选点 */ }
+            }
+        }
+
         // 检查是否是未终止的字符串错误
         if (e.message.includes('Unterminated string')) {
             const start = cleaned.indexOf('{');
@@ -1170,13 +1190,14 @@ function cleanAndParseJSON(rawContent) {
         }
 
         // 详细的错误日志
+        const posMatchFinal = e.message.match(/position (\d+)/);
         const errorDetails = {
             error: e.message,
-            position: e.message.match(/position (\d+)/) ? RegExp.$1 : 'unknown',
+            position: posMatchFinal ? posMatchFinal[1] : 'unknown',
             rawLength: rawContent.length,
             cleanedLength: cleaned.length,
             first300: cleaned.substring(0, 300),
-            problemArea: e.message.includes('position') ? cleaned.substring(Math.max(0, parseInt(RegExp.$1) - 50), parseInt(RegExp.$1) + 50) : 'N/A'
+            problemArea: posMatchFinal ? cleaned.substring(Math.max(0, parseInt(posMatchFinal[1]) - 50), parseInt(posMatchFinal[1]) + 50) : 'N/A'
         };
 
         console.error('❌ JSON解析失败详情:', errorDetails);
@@ -1543,10 +1564,10 @@ ${roomList}
    - "duration": 行为持续时间（分钟，5-120之间）
    - "stat_changes": { "mood": -10到+10, "energy": -20到+10, "satiety": -15到+25, "hygiene": -15到+10, "wallet": 消费变化 }
    - "interaction_with": 互动的角色名（无则为null）
-   - "dialogue": （当interaction_with不为null时必填）角色间的实际对话，数组，6-14句，严格符合各自性格，来回自然流动，对话要有情绪起伏，格式：[{"speaker": "角色名", "line": "对话内容"}, ...]
+   - "dialogue": 角色间的实际对话，数组，2-20句，严格符合各自性格，来回自然流动，对话要有情绪起伏，格式：[{"speaker": "角色名", "line": "对话内容"}, ...]。**重要：若本轮 A 的 interaction_with 指向 B，且 B 的 interaction_with 也指向 A（双方互相描述同一场互动），则只由角色列表中排名靠前的一方填写完整 dialogue，另一方设 null，避免同一段对话出现两次。若某方是主动发起一段独立的、对方行为中未涉及的话题，则可正常填写 dialogue。**
    - "new_room": 目标房间英文ID
    - "actionType": 行为类型（primary_work|secondary_work|daily_life|leisure|rest|social）
-   - "workOutput": （可选）创作成果，结构：{ "title": "作品名", "type": "illustration|food_photo|video", "description": "30字内描述" }
+   - "workOutput": （可选）创作成果。**触发规则：只要角色在本次行为中完成了任何视觉创作——包括完成一幅插画/绘画、拍摄完成一张或一组照片、完成一条视频的拍摄或剪辑——就必须填写此字段，不得省略。** 结构：{ "title": "作品名或这组照片/视频的主题", "type": "illustration（绘画/插画）|food_photo（食物/生活摄影照片）|video（视频）", "description": "30字内描述作品内容本身" }
    - "skill_changes": （可选）技能变化，结构：{ "learn": ["新技能"], "forget": ["失去的技能"] }，仅当角色通过本次行为确实学到或失去了技能时填写
    - "purchases": （可选）购买物品，结构：[{"item": "物品名称", "dest": "inventory 或 房间英文ID", "cost": 价格数字, "quantity": 数量（可选，默认1）}]。规则：①仅当角色确实去购物或网购时才填写；②cost 必须从 wallet 中扣除（stat_changes.wallet 不需要再重复扣）；③余额不足时不得购买；④物品要符合角色性格、职业和用途；⑤价格参考：日用品5-50，食材10-100，家居小物件50-500，电子产品500-5000，家具200-3000；⑥随身携带小物件（食材、外带食物、书籍、小礼物等）dest填"inventory"，家具/家电等固定物件填房间ID；⑦外卖/拼单等捆绑包必须拆分为独立物品（如外卖三份写成三明治×2、饮料×1等分别条目），不得写成一整条捆绑名称
    - "consume_items": （可选）本次行为中实际用尽或消耗掉的物品，结构：[{"item": "物品名称", "from": "inventory（背包）或 房间英文ID", "quantity": 数量（可选，默认1）}]。规则：①仅填写真正被用完的消耗品，如食材、零食、饮料、面膜、卫生纸等；②家具、家电、工具等耐用品不填；③物品必须确实存在于对应位置；④from填"inventory"表示消耗角色背包里的物品，填房间ID表示消耗房间里的物品；⑤有quantity字段时可消耗多份（如吃掉2个包子填quantity:2），背包里剩余份数会相应减少；⑥quantity不得超过背包实际持有数量
@@ -1624,7 +1645,7 @@ function updateCharactersMood() {
         // 逐步衰减：不直接跳跃，而是逐渐靠近目标心情（每次最多变化3点）
         const moodGap = targetMood - char.mood;
         char.mood += Math.sign(moodGap) * Math.min(Math.abs(moodGap), 3);
-        char.mood = Math.max(0, Math.min(100, char.mood));
+        char.mood = Math.round(Math.max(0, Math.min(100, char.mood)));
     }
 }
 
@@ -1660,8 +1681,8 @@ function mockAIResponse(prompt) {
                             actionType: "primary_work"
                         },
                         {
-                            character: "三玖",
-                            thought: "早晨的光是最诚实的——它会把你画面里所有糊弄过去的地方全都照出来。三玖不怕这种诚实，她反而喜欢在这样的光线下动笔，错了就改，改了就好。",
+                            character: "晓雨",
+                            thought: "早晨的光是最诚实的——它会把你画面里所有糊弄过去的地方全都照出来。晓雨不怕这种诚实，她反而喜欢在这样的光线下动笔，错了就改，改了就好。",
                             action: "把画板支在窗边，对着窗外的一角街景起稿，铅笔线条又轻又稳，像是怕打扰了早晨的安静",
                             result: "画了几根电线杆和半棵梧桐树，构图简单，却有一种克制的完整",
                             duration: 45,
@@ -1671,8 +1692,8 @@ function mockAIResponse(prompt) {
                             actionType: "primary_work"
                         },
                         {
-                            character: "五月",
-                            thought: "肚子比闹钟更准时。五月还没睁开眼，胃就已经在催了——先把自己喂饱，顺手多做一份，惠舞那个书呆子肯定又没想着吃东西。",
+                            character: "宁宁",
+                            thought: "肚子比闹钟更准时。宁宁还没睁开眼，胃就已经在催了——先把自己喂饱，顺手多做一份，惠舞那个书呆子肯定又没想着吃东西。",
                             action: "在厨房打两个鸡蛋，切了几片吐司，一边煎蛋一边把面包片压进烤架，等待的间隙顺手洗了昨晚泡着的碗",
                             result: "端出两份早餐，一份放在书房门口，轻轻敲了两下门说'吃饭了'，没等回应就转身去吃自己的",
                             duration: 30,
@@ -1682,7 +1703,7 @@ function mockAIResponse(prompt) {
                             actionType: "daily_life"
                         }
                     ],
-                    narrative: "晨光还没完全铺展开，公寓就已经各自醒来了。惠舞与一个隐藏在代码深处的错误展开了安静的较量；三玖用铅笔捕捉窗外那一角普通的街景；而五月的厨房里，黄油在锅里轻轻滋响，一份没有署名的早餐，悄悄出现在了书房的门口。",
+                    narrative: "晨光还没完全铺展开，公寓就已经各自醒来了。惠舞与一个隐藏在代码深处的错误展开了安静的较量；晓雨用铅笔捕捉窗外那一角普通的街景；而宁宁的厨房里，黄油在锅里轻轻滋响，一份没有署名的早餐，悄悄出现在了书房的门口。",
                     time_passed: 60
                 };
             } else if (hour >= 9 && hour < 12) {
@@ -1701,10 +1722,10 @@ function mockAIResponse(prompt) {
                             actionType: "primary_work"
                         },
                         {
-                            character: "三玖",
+                            character: "晓雨",
                             thought: "早稿已经完成，现在是细化和着色的阶段。这个过程很考验耐心，但也很治愈——笔触一点点覆盖纸面，就像给这个世界一点点上色。",
                             action: "在书房的角落支起画架，铺开调色盘，先用细笔勾勒出人物的五官轮廓，再一层层叠加色彩，中间停下来退后看几步，确认效果后继续深入",
-                            result: "画到中午前，人物的面部已经初步成型，那种寂寞而坚定的眼神也出来了，三玖对自己的作品点了点头",
+                            result: "画到中午前，人物的面部已经初步成型，那种寂寞而坚定的眼神也出来了，晓雨对自己的作品点了点头",
                             duration: 150,
                             stat_changes: { mood: 10, energy: -15, satiety: -10, hygiene: -2, wallet: 0 },
                             interaction_with: null,
@@ -1712,10 +1733,10 @@ function mockAIResponse(prompt) {
                             actionType: "primary_work"
                         },
                         {
-                            character: "五月",
+                            character: "宁宁",
                             thought: "昨天的视频反响还不错，今天要趁热打铁，赶紧把素材整理出来进行初步剪辑。但首先得把下周的内容选题定下来——菜单得多样化，这样才能保持粉丝的新鲜感。",
                             action: "坐在电脑前，打开编辑软件，先快速浏览了所有的素材，给重点片段做了标记，然后打开文档开始写这期视频的脚本和旁白词，边写边在脑子里预演镜头顺序",
-                            result: "脚本写完了，大致框架也理清了，五月感觉这条视频的故事线比上一条更完整，下午可以全力剪辑",
+                            result: "脚本写完了，大致框架也理清了，宁宁感觉这条视频的故事线比上一条更完整，下午可以全力剪辑",
                             duration: 120,
                             stat_changes: { mood: 5, energy: -8, satiety: -6, hygiene: 0, wallet: 0 },
                             interaction_with: null,
@@ -1723,7 +1744,7 @@ function mockAIResponse(prompt) {
                             actionType: "primary_work"
                         }
                     ],
-                    narrative: "上午的阳光透过窗户洒进公寓，三个人各自陷入深度工作的状态——惠舞的指尖在键盘上舞动，为虚拟世界搭建结构；三玖的笔尖在画纸上游走，为角色赋予灵魂；五月对着屏幕喃喃自语，规划着下一个故事的叙述。公寓在这个上午显得安静而充满力量。",
+                    narrative: "上午的阳光透过窗户洒进公寓，三个人各自陷入深度工作的状态——惠舞的指尖在键盘上舞动，为虚拟世界搭建结构；晓雨的笔尖在画纸上游走，为角色赋予灵魂；宁宁对着屏幕喃喃自语，规划着下一个故事的叙述。公寓在这个上午显得安静而充满力量。",
                     time_passed: 90
                 };
             } else if (hour >= 12 && hour < 14) {
@@ -1742,7 +1763,7 @@ function mockAIResponse(prompt) {
                             actionType: "daily_life"
                         },
                         {
-                            character: "三玖",
+                            character: "晓雨",
                             thought: "画到一半，眼睛开始酸，脑子也有些转不动了。不是卡住了，只是需要停一停，让那些颜色在脑子里沉淀一下，再重新看的时候，往往会有新的想法。",
                             action: "放下画笔，躺到沙发上，把靠垫压在脸上，让光线变暗；不是真的要睡，只是想安静地不做任何事",
                             result: "闭眼躺了二十分钟，脑子里莫名其妙地浮现出新画面的构图，爬起来拿笔快速记了下来",
@@ -1753,10 +1774,10 @@ function mockAIResponse(prompt) {
                             actionType: "rest"
                         },
                         {
-                            character: "五月",
+                            character: "宁宁",
                             thought: "脚本写完了，这会儿得吃点东西垫垫肚子。简单弄点午餐吧，快手面疙瘩汤，十分钟搞定，然后继续回电脑前处理素材库。",
                             action: "在厨房快速烧了一锅汤，揪了面疙瘩进去，加了点青菜，十分钟出锅；坐在餐桌边，一边吃一边漫无目的地看手机，粉丝的留言又多了很多",
-                            result: "汤喝完了，肚子也有了点饱腹感，五月擦了嘴，感觉下午有精力继续工作了",
+                            result: "汤喝完了，肚子也有了点饱腹感，宁宁擦了嘴，感觉下午有精力继续工作了",
                             duration: 15,
                             stat_changes: { mood: 6, energy: 8, satiety: 18, hygiene: -1, wallet: -8 },
                             interaction_with: null,
@@ -1764,7 +1785,7 @@ function mockAIResponse(prompt) {
                             actionType: "daily_life"
                         }
                     ],
-                    narrative: "午间的公寓被各自的事务切割成三个独立的小世界：惠舞在泡面的热气里捕捞着从代码缝隙里漏出的灵感；三玖用靠垫盖住脸，在黑暗里等待新的画面自己浮现；而五月则在厨房的烟火气中短暂地停歇，为下午的工作补充能量。",
+                    narrative: "午间的公寓被各自的事务切割成三个独立的小世界：惠舞在泡面的热气里捕捞着从代码缝隙里漏出的灵感；晓雨用靠垫盖住脸，在黑暗里等待新的画面自己浮现；而宁宁则在厨房的烟火气中短暂地停歇，为下午的工作补充能量。",
                     time_passed: 35
                 };
             } else if (hour >= 14 && hour < 17) {
@@ -1783,10 +1804,10 @@ function mockAIResponse(prompt) {
                             actionType: "primary_work"
                         },
                         {
-                            character: "三玖",
+                            character: "晓雨",
                             thought: "午睡后眼睛舒服多了，继续着色吧。这个女孩的故事还没讲完，衣服的褶皱、头发的光泽、背景的虚化，都还需要更多的笔触来完成。",
                             action: "回到书房，继续昨天未完的作品，笔尖在画纸上游走，从细节开始——衣料的质感、光影在脸上的流动、那一丝若有若无的表情。每完成一个部分就停下来看看整体效果",
-                            result: "三个小时的工作下来，这幅画已经完成度很高了，三玖感觉这可能是这个月最满意的作品",
+                            result: "三个小时的工作下来，这幅画已经完成度很高了，晓雨感觉这可能是这个月最满意的作品",
                             duration: 180,
                             stat_changes: { mood: 12, energy: -18, satiety: -14, hygiene: -3, wallet: 0 },
                             interaction_with: null,
@@ -1799,10 +1820,10 @@ function mockAIResponse(prompt) {
                             }
                         },
                         {
-                            character: "五月",
+                            character: "宁宁",
                             thought: "脚本已经敲定，剩下的工作就是在timeline上把素材组织起来，配音、配乐、特效，一步步把素材变成一个完整的故事。下午的光线很好，得抓紧时间。",
                             action: "坐在电脑前打开pr，把上午标记的重点素材一段段地拖进timeline，粗剪完成后开始对着脚本录制旁白，嗓子有点累但声音的节奏越来越顺畅",
-                            result: "傍晚六点，第一版剪辑完成，五月看了一遍回放，虽然细节还可以优化，但整体故事线已经很完整了，明天可以进行精细调整",
+                            result: "傍晚六点，第一版剪辑完成，宁宁看了一遍回放，虽然细节还可以优化，但整体故事线已经很完整了，明天可以进行精细调整",
                             duration: 150,
                             stat_changes: { mood: 7, energy: -16, satiety: -10, hygiene: -2, wallet: 0 },
                             interaction_with: null,
@@ -1815,7 +1836,7 @@ function mockAIResponse(prompt) {
                             }
                         }
                     ],
-                    narrative: "下午的公寓洋溢着创意和代码的芬芳。惠舞的书房里，屏幕闪烁着调试的色彩；三玖的卧室里，笔尖舞动着一个完整的世界；而五月的电脑屏幕上，素材像音符一样在timeline上排列成了一首视觉之歌。三个人各自沉浸在自己的工作中，却又在这个共同的下午里，用专注书写着各自的故事。",
+                    narrative: "下午的公寓洋溢着创意和代码的芬芳。惠舞的书房里，屏幕闪烁着调试的色彩；晓雨的卧室里，笔尖舞动着一个完整的世界；而宁宁的电脑屏幕上，素材像音符一样在timeline上排列成了一首视觉之歌。三个人各自沉浸在自己的工作中，却又在这个共同的下午里，用专注书写着各自的故事。",
                     time_passed: 120
                 };
             } else if (hour >= 17 && hour < 20) {
@@ -1834,10 +1855,10 @@ function mockAIResponse(prompt) {
                             actionType: "leisure"
                         },
                         {
-                            character: "三玖",
+                            character: "晓雨",
                             thought: "今天的创作已经完成了，再看下去也只是重复打磨。这幅画可以放一放，明天用新的眼光再看一遍，往往会发现今天看不到的问题。该休息了。",
                             action: "收起所有的画具，洗了手，窝进卧室的懒人沙发，打开平板放了部喜欢的老电影，就这样窝着看，让脑子彻底放空",
-                            result: "电影的背景音乐舒缓而温和，三玖的眼神逐渐放松，整个人都陷入了舒适的懒散中",
+                            result: "电影的背景音乐舒缓而温和，晓雨的眼神逐渐放松，整个人都陷入了舒适的懒散中",
                             duration: 90,
                             stat_changes: { mood: 8, energy: 16, satiety: -6, hygiene: 0, wallet: 0 },
                             interaction_with: null,
@@ -1845,18 +1866,18 @@ function mockAIResponse(prompt) {
                             actionType: "leisure"
                         },
                         {
-                            character: "五月",
+                            character: "宁宁",
                             thought: "剪辑工作告一段落了，这会儿得进入职业生活的另一个角色——把自己换成一个会做饭的女孩。晚餐得给三个人都准备上，算算时间应该来得及。",
                             action: "走进厨房，看了看冰箱里的食材，决定做个简单的番茄鸡蛋面和清汤青菜。开始洗菜、切菜、烧水，厨房里很快就热气腾腾的，偶尔尝一口汤的咸淡",
-                            result: "饭菜差不多同时出锅，五月擦了擦手，轻声叫了两个室友来吃饭，自己也坐下来吃了一碗，虽然今天没专门给别人做什么特殊的，但这顿饭也饱含了她作为室友的用心",
+                            result: "饭菜差不多同时出锅，宁宁擦了擦手，轻声叫了两个室友来吃饭，自己也坐下来吃了一碗，虽然今天没专门给别人做什么特殊的，但这顿饭也饱含了她作为室友的用心",
                             duration: 60,
                             stat_changes: { mood: 6, energy: 2, satiety: -8, hygiene: -4, wallet: -15 },
-                            interaction_with: "惠舞、三玖",
+                            interaction_with: "惠舞、晓雨",
                             new_room: "kitchen",
                             actionType: "daily_life"
                         }
                     ],
-                    narrative: "傍晚降临，公寓从紧张的工作节奏渐渐放松下来。惠舞卸下了代码工程师的角色，恢复成一个需要休息的普通人；三玖把画笔搁置在一边，让自己在电影的陪伴下静静地发呆；而五月则自然地转换到家务的角色，厨房里的热汤和家常菜的香气，宣告了这一天工作的落幕。三个人围坐在一起，享受着彼此陪伴的傍晚。",
+                    narrative: "傍晚降临，公寓从紧张的工作节奏渐渐放松下来。惠舞卸下了代码工程师的角色，恢复成一个需要休息的普通人；晓雨把画笔搁置在一边，让自己在电影的陪伴下静静地发呆；而宁宁则自然地转换到家务的角色，厨房里的热汤和家常菜的香气，宣告了这一天工作的落幕。三个人围坐在一起，享受着彼此陪伴的傍晚。",
                     time_passed: 60
                 };
             } else if (hour >= 20 || hour < 5) {
@@ -1875,10 +1896,10 @@ function mockAIResponse(prompt) {
                             actionType: "rest"
                         },
                         {
-                            character: "三玖",
+                            character: "晓雨",
                             thought: "电影看完了，窗外已经是深夜的寂静。洗个澡吧，把一天的工作的痕迹都冲洗掉，然后好好睡一觉，让身体和脑子都得到充分的修复。",
                             action: "进浴室洗澡，用温水浸泡，闭眼感受水的温度，脑子里闪过今天创作的各个细节。洗好后穿上睡衣，躺在床上，窝进被子里，整个人都蜷缩在温暖中",
-                            result: "黑暗中，三玖的呼吸逐渐变得均匀，一天的疲惫在睡眠中悄悄消解",
+                            result: "黑暗中，晓雨的呼吸逐渐变得均匀，一天的疲惫在睡眠中悄悄消解",
                             duration: 80,
                             stat_changes: { mood: 6, energy: 28, satiety: -3, hygiene: 24, wallet: 0 },
                             interaction_with: null,
@@ -1886,10 +1907,10 @@ function mockAIResponse(prompt) {
                             actionType: "rest"
                         },
                         {
-                            character: "五月",
+                            character: "宁宁",
                             thought: "晚饭后收拾了碗筷，整个下午都在电脑前，此刻眼睛有点酸。在客厅窝进沙发，看会儿综艺节目放松一下，别想那些工作的事了。",
                             action: "窝进客厅的沙发，打开电视翻到综艺频道，一边看一边吃了点晚间小零食，节目的欢笑声填满了夜晚的安静。看到困了，才缓缓起身走向卧室",
-                            result: "躺在床上，脑子里还有节目欢笑声的余音，五月面带微笑地闭上眼睛，进入了梦乡",
+                            result: "躺在床上，脑子里还有节目欢笑声的余音，宁宁面带微笑地闭上眼睛，进入了梦乡",
                             duration: 120,
                             stat_changes: { mood: 8, energy: 26, satiety: 8, hygiene: 0, wallet: -20 },
                             interaction_with: null,
@@ -1926,7 +1947,7 @@ function mockAIResponse(prompt) {
                             new_room: "kitchen"
                         },
                         {
-                            character: "三玖",
+                            character: "晓雨",
                             thought: "眼睛和脑子都需要休息。与其勉强画画，不如小憩一会儿。",
                             action: "在卧室铺好被子，靠在枕头上，闭上眼睛，身体完全放松",
                             result: "小憩后，睁开眼睛时感觉整个人都重新活过来了",
@@ -1936,10 +1957,10 @@ function mockAIResponse(prompt) {
                             new_room: "bedroom2"
                         },
                         {
-                            character: "五月",
+                            character: "宁宁",
                             thought: "需要舒服地坐着，喝点热茶，吃点零食，让身心都放松下来。",
                             action: "在厨房给自己泡了杯热茶，用小碗装了点坚果，坐到客厅的沙发上",
-                            result: "十五分钟后，五月感觉神清气爽，站起来拍拍手，准备继续工作",
+                            result: "十五分钟后，宁宁感觉神清气爽，站起来拍拍手，准备继续工作",
                             duration: 15,
                             stat_changes: { mood: 10, energy: 15, satiety: 5, hygiene: 0, wallet: -12 },
                             interaction_with: null,
@@ -2000,7 +2021,7 @@ async function callNightlyReviewAI(reviewPrompt) {
  */
 function getMockArtworkPrompt(charName, type) {
     const mockPrompts = {
-        '三玖': {
+        '晓雨': {
             illustration: {
                 description: "衣料质感细腻的少女坐在窗边，背对观众，长黑发被秋风吹起，细腻的线条刻画出若有若无的表情",
                 prompt: "a quiet girl sitting by the window, back facing viewer, long dark hair blown by autumn breeze, soft morning light, detailed illustration, anime style, melancholic atmosphere, watercolor texture, delicate linework, muted blue and gray colors, professional quality",
@@ -2008,7 +2029,7 @@ function getMockArtworkPrompt(charName, type) {
                 style: "anime illustration"
             }
         },
-        '五月': {
+        '宁宁': {
             video: {
                 description: "热气腾腾的面碗从正上方俯拍，温暖的光线照亮食材细节，视频剪辑流畅节奏感强，旁白声音清晰温暖",
                 prompt: "food photography cinematic thumbnail, steaming bowl of noodles overhead shot, warm golden hour lighting, bokeh background, styled on dark wood table, professional food styling, shallow depth of field, appetizing composition",
@@ -2031,9 +2052,9 @@ function getMockArtworkPrompt(charName, type) {
  */
 function getStyleHint(charName, type) {
     const hints = {
-        '三玖_illustration': "anime illustration, soft linework, Japanese manga style, pastel palette, emotional depth",
-        '五月_food_photo': "food photography, bokeh, warm daylight, overhead shot, professional styling, appetizing",
-        '五月_video': "cinematic food vlog, dramatic lighting, close-up detail shots, editorial style, warm color grading"
+        '晓雨_illustration': "anime illustration, soft linework, Japanese manga style, pastel palette, emotional depth",
+        '宁宁_food_photo': "food photography, bokeh, warm daylight, overhead shot, professional styling, appetizing",
+        '宁宁_video': "cinematic food vlog, dramatic lighting, close-up detail shots, editorial style, warm color grading"
     };
     return hints[`${charName}_${type}`] || "artistic, high quality, detailed";
 }
@@ -2041,7 +2062,7 @@ function getStyleHint(charName, type) {
 /**
  * 调用 deepseek 生成作品的文生图命令词
  */
-async function generateArtworkImagePrompt(char, workOutput, action) {
+async function generateArtworkImagePrompt(char, workOutput) {
     // Mock 模式：无 API Key 时返回预设 prompt
     if (!gameState.apiKey) {
         return getMockArtworkPrompt(char.name, workOutput.type);
@@ -2060,14 +2081,13 @@ async function generateArtworkImagePrompt(char, workOutput, action) {
             content: `角色：${char.name}（${char.career}，${char.age}岁）
 作品类型：${workOutput.type}
 作品描述：${workOutput.description}
-完成背景：${action.result ? action.result.slice(0, 80) : ''}
 风格参考：${styleHint}
 
 请判断并返回JSON（无其他文字）：
 {
   "applicable": true/false,
-  "description": "中文自然语言描述（60-100字，生动描绘画面场景、氛围、光线、细节，false时留空）",
-  "prompt": "英文自然语言描述（40-80词，适合DALL-E 3等自然语言图像生成器，false时留空）",
+  "description": "中文自然语言描述（150-250字，仅描述作品画面本身，涵盖主体形象与姿态、构图布局、光线与光影、色彩搭配、细节质感、画面层次、情绪氛围，力求细腻生动，让读者如同亲眼看到这幅作品；不得提及创作者、画室、画桌、调色盘、创作过程等任何创作环境，false时留空）",
+  "prompt": "英文自然语言描述（80-150词，仅描述作品画面内容本身，涵盖 subject, pose, composition, lighting, color palette, texture, mood and atmosphere，不含创作者或创作场景，适合DALL-E 3等自然语言图像生成器，false时留空）",
   "negativePrompt": "",
   "style": "风格标签，false时留空"
 }`
@@ -2082,14 +2102,13 @@ async function generateArtworkImagePrompt(char, workOutput, action) {
             content: `角色：${char.name}（${char.career}，${char.age}岁）
 作品类型：${workOutput.type}
 作品描述：${workOutput.description}
-完成背景：${action.result ? action.result.slice(0, 80) : ''}
 风格参考：${styleHint}
 
 请判断并返回JSON（无其他文字）：
 {
   "applicable": true/false,
-  "description": "中文描述（30-50字，false时留空）",
-  "prompt": "英文提示词（最多120词，false时留空）",
+  "description": "中文描述（30-50字，仅描述作品画面本身的主体、构图、色彩，不得提及创作者、画室、画桌等创作环境，false时留空）",
+  "prompt": "英文提示词（最多120词，仅描述作品画面内容，不含创作者或创作场景，false时留空）",
   "negativePrompt": "负向提示词（最多30词，false时留空）",
   "style": "风格标签，false时留空"
 }`
@@ -2652,7 +2671,7 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
 
             // 更新角色状态
             if (action.stat_changes) {
-                char.mood = Math.max(0, Math.min(100, char.mood + (action.stat_changes.mood || 0)));
+                char.mood = Math.round(Math.max(0, Math.min(100, char.mood + (action.stat_changes.mood || 0))));
                 char.energy = Math.max(1, Math.min(100, char.energy + (action.stat_changes.energy || 0)));
                 char.satiety = Math.max(0, Math.min(100, char.satiety + (action.stat_changes.satiety || 0)));
                 char.hygiene = Math.max(0, Math.min(100, char.hygiene + (action.stat_changes.hygiene || 0)));
@@ -2759,7 +2778,7 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
 
             // 追踪行为历史
             if (!char.actionHistory) char.actionHistory = [];
-            const shortAction = action.action.slice(0, 40);
+            const shortAction = (action.action || '').slice(0, 40);
             char.actionHistory.unshift(shortAction);
             if (char.actionHistory.length > 3) char.actionHistory.pop();
 
@@ -2782,10 +2801,11 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
             // 检测作品完成，触发文生图命令词生成（fire-and-forget）
             const workOutput = action.workOutput || null;
             if (workOutput) {
-                const now = Date.now();
-                if (now - (gameState.lastArtworkPromptTime || 0) > 5000) {  // 5秒节流
-                    gameState.lastArtworkPromptTime = now;
-                    generateArtworkImagePrompt(char, workOutput, action).then(promptResult => {
+                if (!gameState.artworkQueue) gameState.artworkQueue = 0;
+                const delay = gameState.artworkQueue * 2000;
+                gameState.artworkQueue++;
+                setTimeout(() => { gameState.artworkQueue = Math.max(0, (gameState.artworkQueue || 1) - 1); }, delay + 5000);
+                setTimeout(() => generateArtworkImagePrompt(char, workOutput).then(promptResult => {
                         if (promptResult && promptResult.applicable !== false) {
                             const title = workOutput.title ? `《${workOutput.title}》` : '';
                             addLog(`✦ ${char.name} 完成了新作品 ${title}`, 'artwork');
@@ -2824,8 +2844,7 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
                             if (artworkLog.length > 50) artworkLog.splice(0, artworkLog.length - 50);
                             localStorage.setItem('artwork_prompt_log', JSON.stringify(artworkLog));
                         }
-                    }).catch(err => { console.warn('作品记录保存失败:', err); });  // 静默失败，不影响主循环
-                }
+                    }).catch(err => { console.warn('作品记录保存失败:', err); }), delay);  // 静默失败，不影响主循环
             }
 
             // 记录互动（累积到当天记录，供夜晚统一结算）
@@ -3150,7 +3169,7 @@ function advanceGameTime(minutes) {
 
         // 高疲劳时心情也会下降
         if ((char.fatigueLevel || 0) > 70) {
-            char.mood = Math.max(0, char.mood - Math.floor(hoursPassed * 1));
+            char.mood = Math.round(Math.max(0, char.mood - Math.floor(hoursPassed * 1)));
         }
 
         // 检查晕倒/恢复状态（睡眠状态不检查晕倒）
