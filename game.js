@@ -2833,8 +2833,10 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
                 }
                 // 用对话内容签名判重，避免同一段对话因出现在多个角色的 action 里而重复打印
                 if (Array.isArray(action.dialogue) && action.dialogue.length > 0) {
+                    // 独白检测：所有台词都是同一人说的，说明 AI 只给了该角色的独白，不是真正对话，跳过
+                    const speakers = new Set(action.dialogue.map(d => d.speaker).filter(Boolean));
                     const dialogueKey = action.dialogue.map(d => `${d.speaker}:${d.line}`).join('\n');
-                    if (!shownDialogueContent.has(dialogueKey)) {
+                    if (speakers.size >= 2 && !shownDialogueContent.has(dialogueKey)) {
                         shownDialogueContent.add(dialogueKey);
                         for (const line of action.dialogue) {
                             const speaker = line.speaker || '';
