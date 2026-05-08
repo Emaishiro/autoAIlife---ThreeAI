@@ -39,6 +39,7 @@ const GAME_CONFIG = {
             gender: "male",
             age: 22,
             personality: "榆木脑袋的顶尖学霸，非常认真负责，会主动找人聊天，空闲时看新闻",
+            persona: "",
             career: "AI算法工程师",
             monthlyIncome: 15000,
             careerPrompt: "工作日上午9-12点和下午14-18点为明确工作时段。工作中应该展示专业和认真的态度。",
@@ -63,6 +64,7 @@ const GAME_CONFIG = {
             gender: "female",
             age: 21,
             personality: "沉默寡言，不擅长表达感情，内向但也不介意别人的好意，空闲时看电影，空闲时听歌",
+            persona: "",
             career: "插画师",
             monthlyIncome: 8000,
             careerPrompt: "创意工作者，工作没有固定时段，主要通过作品输出来体现。",
@@ -87,6 +89,7 @@ const GAME_CONFIG = {
             gender: "female",
             age: 21,
             personality: "努力认真，不擅长撒谎，空闲时喜欢吃东西，有当老师的梦想，会主动找人聊天，爱分享趣事，空闲时看时尚杂志",
+            persona: "",
             career: "美食博主",
             monthlyIncome: 10000,
             careerPrompt: "需要定期产出内容。通常会在厨房进行美食制作或拍摄。",
@@ -241,6 +244,7 @@ function initGameStateFromConfig(config) {
             gender: charConfig.gender,
             age: charConfig.age,
             personality: charConfig.personality,
+            persona: charConfig.persona || '',
             career: charConfig.career,
             monthlyIncome: charConfig.monthlyIncome,
             careerPrompt: charConfig.careerPrompt,
@@ -1532,6 +1536,14 @@ function buildSystemPrompt() {
         ? `【世界观设定】\n${activeConfig.worldSetting}\n\n`
         : '';
 
+    // 只在至少一个角色有人设时生成该块
+    const personaLines = chars
+        .filter(char => char.persona && char.persona.trim())
+        .map(char => `- ${char.name}：${char.persona.trim()}`);
+    const personaBlock = personaLines.length > 0
+        ? `【角色人设背景——深层驱动力，不可直接复述，融入行为与心理描写】\n${personaLines.join('\n')}\n\n`
+        : '';
+
     const npcList = (activeConfig.npcs || []);
     const npcBlock = npcList.length > 0
         ? `【NPC配角】\n以下是场景中已记录的配角，可自然地将他们写入叙事和角色行为中：\n${npcList.map(n => `- ${n.name}（${n.role}）${n.note ? '：' + n.note : ''}`).join('\n')}\n⚠️ 以上已记录的配角【禁止】再次出现在 new_npcs 字段中。只有上方列表里完全没有的全新陌生人，才可通过 new_npcs 添加。\n\n`
@@ -1541,7 +1553,7 @@ function buildSystemPrompt() {
 
     const systemPrompt = `你是一位文学素养极高的生活模拟游戏叙事者，负责为${sceneName}里${actionCountText}位角色生成日常生活行为。
 
-${worldBlock}${npcBlock}【角色性格设定】
+${worldBlock}${personaBlock}${npcBlock}【角色性格设定】
 ${charDescriptions}
 
 【职业行为规范——生成action时必须参考】
@@ -3562,6 +3574,7 @@ function loadGame(slotIndex) {
             const configChar = activeConfig?.characters?.find(c => c.id === charId);
             if (!char.careerPrompt) char.careerPrompt = configChar?.careerPrompt || '';
             if (!char.personality)  char.personality  = configChar?.personality  || '';
+            if (char.persona === undefined) char.persona = configChar?.persona   || '';
             if (!char.career)       char.career       = configChar?.career       || '';
             if (!char.color)        char.color        = configChar?.color        || '#ff00ff';
             if (char.status === undefined) {
@@ -4333,11 +4346,18 @@ function renderCharacterEditor() {
             </div>
             <div class="editor-field-group">
                 <div class="editor-field-label">性格描述</div>
-                <textarea oninput="updateCharField(${idx}, 'personality', this.value)" style="height: 80px;">${char.personality}</textarea>
+                <textarea oninput="updateCharField(${idx}, 'personality', this.value); updateCharCounter('cc-s-${idx}-pers', this.value, 150)" style="height: 80px;">${char.personality}</textarea>
+                ${charCounterHtml(char.personality, 150, `cc-s-${idx}-pers`)}
+            </div>
+            <div class="editor-field-group">
+                <div class="editor-field-label">📖 人设背景（背景故事、兴趣爱好、性取向等，AI 会参考但不会直接复述）</div>
+                <textarea oninput="updateCharField(${idx}, 'persona', this.value); updateCharCounter('cc-s-${idx}-persona', this.value, 500)" style="height: 100px;" placeholder="可以写角色的成长经历、性格形成原因、感情经历、秘密、性取向、特殊癖好等...">${char.persona || ''}</textarea>
+                ${charCounterHtml(char.persona, 500, `cc-s-${idx}-persona`)}
             </div>
             <div class="editor-field-group">
                 <div class="editor-field-label">工作提示（AI 行为规则）</div>
-                <textarea oninput="updateCharField(${idx}, 'careerPrompt', this.value)" style="height: 70px;" placeholder="例如：工作日上午9-12点为明确工作时段...">${char.careerPrompt || ''}</textarea>
+                <textarea oninput="updateCharField(${idx}, 'careerPrompt', this.value); updateCharCounter('cc-s-${idx}-career', this.value, 200)" style="height: 70px;" placeholder="例如：工作日上午9-12点为明确工作时段...">${char.careerPrompt || ''}</textarea>
+                ${charCounterHtml(char.careerPrompt, 200, `cc-s-${idx}-career`)}
             </div>
             <div class="editor-field-group">
                 <div class="editor-field-label">初始状态</div>
@@ -4448,6 +4468,7 @@ function addCharacter() {
         gender: 'female',
         age: 20,
         personality: '新角色',
+        persona: '',
         career: '职业',
         monthlyIncome: 10000,
         careerPrompt: '工作提示',
@@ -4494,6 +4515,29 @@ function removeCharacter(idx) {
 }
 
 // 更新角色字段（不重渲染，避免输入框失去焦点）
+function _charCounterState(len, limit) {
+    const pct = len / limit;
+    if (pct < 0.7)  return { color: '#555', warn: '' };
+    if (pct < 0.9)  return { color: '#ffb86c', warn: '  ⚠ token 消耗增加' };
+    if (pct < 1.0)  return { color: '#ff8c42', warn: '  ⚠ 接近上限，token 消耗显著增加' };
+    return { color: '#ff5555', warn: '  ⚠ 超出建议长度，将大幅增加 token 消耗' };
+}
+
+function charCounterHtml(text, limit, id) {
+    const len = (text || '').length;
+    const { color, warn } = _charCounterState(len, limit);
+    return `<div id="${id}" style="font-size:11px;color:${color};text-align:right;margin-top:2px;">${len} / ${limit}${warn}</div>`;
+}
+
+function updateCharCounter(id, text, limit) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const len = (text || '').length;
+    const { color, warn } = _charCounterState(len, limit);
+    el.style.color = color;
+    el.textContent = `${len} / ${limit}${warn}`;
+}
+
 function updateCharField(idx, field, value) {
     setupPanelState.currentConfig.characters[idx][field] = value;
 
@@ -5469,11 +5513,18 @@ function renderDrawerCharacters() {
             </div>
             <div class="drawer-field">
                 <div class="drawer-field-label">🧠 性格描述</div>
-                <textarea oninput="updateDrawerCharField('${charId}', 'personality', this.value)" style="width: 100%; height: 70px; resize: vertical; box-sizing: border-box;">${char.personality || ''}</textarea>
+                <textarea oninput="updateDrawerCharField('${charId}', 'personality', this.value); updateCharCounter('cc-d-${charId}-pers', this.value, 150)" style="width: 100%; height: 70px; resize: vertical; box-sizing: border-box;">${char.personality || ''}</textarea>
+                ${charCounterHtml(char.personality, 150, `cc-d-${charId}-pers`)}
+            </div>
+            <div class="drawer-field">
+                <div class="drawer-field-label">📖 人设背景</div>
+                <textarea oninput="updateDrawerCharField('${charId}', 'persona', this.value); updateCharCounter('cc-d-${charId}-persona', this.value, 500)" style="width: 100%; height: 90px; resize: vertical; box-sizing: border-box;" placeholder="背景故事、兴趣爱好、性取向等...">${char.persona || ''}</textarea>
+                ${charCounterHtml(char.persona, 500, `cc-d-${charId}-persona`)}
             </div>
             <div class="drawer-field">
                 <div class="drawer-field-label">📋 工作提示</div>
-                <textarea oninput="updateDrawerCharField('${charId}', 'careerPrompt', this.value)" style="width: 100%; height: 70px; resize: vertical; box-sizing: border-box;">${char.careerPrompt || ''}</textarea>
+                <textarea oninput="updateDrawerCharField('${charId}', 'careerPrompt', this.value); updateCharCounter('cc-d-${charId}-career', this.value, 200)" style="width: 100%; height: 70px; resize: vertical; box-sizing: border-box;">${char.careerPrompt || ''}</textarea>
+                ${charCounterHtml(char.careerPrompt, 200, `cc-d-${charId}-career`)}
             </div>
             <div class="drawer-field">
                 <div class="drawer-field-label">📚 技能</div>
