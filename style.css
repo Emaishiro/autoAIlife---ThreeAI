@@ -609,6 +609,19 @@ header.collapsed #status-bar {
     #game-container.state-collapsed {
         grid-template-columns: 22px 1fr;
     }
+    .setup-tab-btn {
+        flex: 0 0 auto;
+        flex-direction: column;
+        padding: 10px 12px;
+        gap: 4px;
+        white-space: nowrap;
+    }
+    .setup-tab-btn .tab-icon {
+        font-size: 16px;
+    }
+    .setup-tab-btn > span:not(.tab-icon) {
+        font-size: 12px;
+    }
 }
 @media (max-width: 479px) {
     #game-container.info-collapsed {
@@ -899,7 +912,8 @@ button:hover {
 @media (max-width: 639px) {
     body {
         padding: 4px;
-        padding-bottom: calc(4px + env(safe-area-inset-bottom));
+        padding-bottom: max(env(safe-area-inset-bottom), 30px);
+        align-items: flex-start;
     }
 
     #game-container {
@@ -910,7 +924,7 @@ button:hover {
         grid-template-columns: 1fr 1fr;
         grid-template-rows: auto 1fr minmax(0, 30vh);
         gap: 6px;
-        height: calc(100dvh - 8px - env(safe-area-inset-bottom));
+        height: calc(100dvh - 4px - max(env(safe-area-inset-bottom), 30px));
     }
 
     header {
@@ -1293,6 +1307,14 @@ button:hover {
     display: flex;
     border-bottom: 1px solid #333;
     background: #0d0d0d;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-shrink: 0;
+}
+.setup-tabs::-webkit-scrollbar {
+    display: none;
 }
 
 .setup-tab-btn {
