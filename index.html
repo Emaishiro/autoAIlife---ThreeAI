@@ -7,7 +7,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#0d0d0d">
     <title>文字生活模拟</title>
-    <link rel="stylesheet" href="style.css?v=2026050803">
+    <script>const _V = '2026050805';</script>
+    <script>document.write('<link rel="stylesheet" href="style.css?v=' + _V + '">');</script>
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-7BY4GMQ9J8"></script>
     <script>
@@ -20,6 +21,7 @@
 <body>
     <!-- 游戏前设置面板（全屏覆盖） -->
     <div id="setup-overlay" class="setup-overlay active">
+        <div id="version-badge" style="position:absolute;top:12px;right:16px;font-size:11px;color:#444;font-family:monospace;z-index:10;pointer-events:none;"></div>
         <div class="setup-panel">
             <div class="setup-header">
                 <h1>🏠 公寓生活模拟器</h1>
@@ -300,7 +302,9 @@
         </div>
     </div>
 
-    <script src="calendar-plugin.js?v=2026050803"></script>
-    <script src="game.js?v=2026050803"></script>
+    <script>
+        document.write('<script src="calendar-plugin.js?v=' + _V + '"><\/script>');
+        document.write('<script src="game.js?v=' + _V + '"><\/script>');
+    </script>
 </body>
 </html>

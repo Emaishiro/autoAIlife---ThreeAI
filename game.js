@@ -1374,6 +1374,11 @@ async function callDeepseekAPI(messages, useJsonFormat = true, maxTokens = 8000)
 
     const data = await response.json();
     console.log('[DeepSeek 原始响应]', data.choices?.[0]?.message || data);
+    if (data.usage && window._sessionTokens) {
+        window._sessionTokens.prompt += data.usage.prompt_tokens || 0;
+        window._sessionTokens.completion += data.usage.completion_tokens || 0;
+        window._sessionTokens.calls += 1;
+    }
     const extractedContent = extractDeepseekResponseContent(data);
 
     if (extractedContent && typeof extractedContent === 'object') {
@@ -6136,6 +6141,9 @@ function initPanelCollapseButtons() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    const vb = document.getElementById('version-badge');
+    if (vb) vb.textContent = `v${typeof _V !== 'undefined' ? _V : ''}`;
+
     document.getElementById('open-artwork-log-btn').addEventListener('click', openArtworkLogModal);
     document.getElementById('close-artwork-log-btn').addEventListener('click', closeArtworkLogModal);
     document.getElementById('artwork-log-export-btn').addEventListener('click', exportArtworkLog);
@@ -6157,3 +6165,47 @@ document.addEventListener('DOMContentLoaded', () => {
         // 游戏保持暂停状态，等待用户点击"开始模拟"
     }
 });
+
+// 会话 token 累计（由 callDeepseekAPI 写入）
+window._sessionTokens = { prompt: 0, completion: 0, calls: 0 };
+
+// 真实停留时长追踪
+(function () {
+    if (typeof gtag !== 'function') return;
+
+    const startTime = Date.now();
+    let focusTime = 0;
+    let focusStart = document.hasFocus() ? Date.now() : null;
+
+    document.addEventListener('focus', () => { focusStart = Date.now(); });
+    document.addEventListener('blur', () => {
+        if (focusStart) { focusTime += Date.now() - focusStart; focusStart = null; }
+    });
+
+    // 每5分钟发一次心跳，防止GA断会话
+    setInterval(() => {
+        const total = Math.round((Date.now() - startTime) / 1000);
+        const t = window._sessionTokens;
+        gtag('event', 'heartbeat', {
+            total_seconds: total,
+            prompt_tokens: t.prompt,
+            completion_tokens: t.completion,
+            api_calls: t.calls
+        });
+    }, 5 * 60 * 1000);
+
+    // 页面关闭时上报总时长和 token 消耗
+    window.addEventListener('pagehide', () => {
+        if (focusStart) { focusTime += Date.now() - focusStart; }
+        const total = Math.round((Date.now() - startTime) / 1000);
+        const focus = Math.round(focusTime / 1000);
+        const t = window._sessionTokens;
+        gtag('event', 'session_end', {
+            total_seconds: total,
+            focus_seconds: focus,
+            prompt_tokens: t.prompt,
+            completion_tokens: t.completion,
+            api_calls: t.calls
+        });
+    });
+})();
