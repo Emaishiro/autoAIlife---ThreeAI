@@ -910,7 +910,7 @@ button:hover {
         grid-template-columns: 1fr 1fr;
         grid-template-rows: auto 1fr minmax(0, 30vh);
         gap: 6px;
-        height: 100dvh;
+        height: calc(100dvh - 8px - env(safe-area-inset-bottom));
     }
 
     header {
@@ -969,6 +969,11 @@ button:hover {
         padding: 6px;
         padding-bottom: 6px;
         overflow-y: hidden;
+    }
+
+    #info-panel.collapsed {
+        padding: 4px;
+        justify-content: center;
     }
 
     #info-panel .panel-body {
