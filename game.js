@@ -365,17 +365,30 @@ function applySkillChanges(charOrName, skillChanges) {
     // 处理学习的技能
     if (skillChanges.learn && Array.isArray(skillChanges.learn)) {
         for (const skill of skillChanges.learn) {
-            if (!char.skills.includes(skill)) {
-                char.skills.push(skill);
-                addLog(`${char.name} 学会了新技能：【${skill}】`, 'system', char.name);
-
-                // 同步更新 activeConfig
-                if (charId) {
-                    const charConfig = activeConfig.characters.find(c => c.id === charId);
-                    if (charConfig && !charConfig.skills.includes(skill)) {
-                        charConfig.skills.push(skill);
-                    }
-                }
+            const trimmed = skill.trim();
+            if (!trimmed) continue;
+            // 精确去重
+            if (char.skills.includes(trimmed)) continue;
+            // 子串相似去重：新技能与已有技能互为子串（至少4字）则视为重叠
+            const isSimilar = char.skills.some(existing => {
+                const a = existing.trim(), b = trimmed;
+                return (a.length >= 4 && b.includes(a)) || (b.length >= 4 && a.includes(b));
+            });
+            if (isSimilar) {
+                console.log(`[技能去重] ${char.name} 跳过近似技能「${trimmed}」`);
+                continue;
+            }
+            char.skills.push(trimmed);
+            // 超出上限时移除最早的技能
+            if (char.skills.length > 15) {
+                const removed = char.skills.splice(0, 1)[0];
+                console.log(`[技能上限] ${char.name} 移除最旧技能「${removed}」`);
+            }
+            addLog(`${char.name} 学会了新技能：【${trimmed}】`, 'system', char.name);
+            // 同步 activeConfig（整体覆写保持一致）
+            if (charId) {
+                const charConfig = activeConfig.characters.find(c => c.id === charId);
+                if (charConfig) charConfig.skills = [...char.skills];
             }
         }
     }
@@ -1568,7 +1581,7 @@ ${roomList}
    - "new_room": 目标房间英文ID
    - "actionType": 行为类型（primary_work|secondary_work|daily_life|leisure|rest|social）
    - "workOutput": （可选）创作成果。**触发规则：只要角色在本次行为中完成了任何视觉创作——包括完成一幅插画/绘画、拍摄完成一张或一组照片、完成一条视频的拍摄或剪辑——就必须填写此字段，不得省略。** 结构：{ "title": "作品名或这组照片/视频的主题", "type": "illustration（绘画/插画）|food_photo（食物/生活摄影照片）|video（视频）", "description": "30字内描述作品内容本身" }
-   - "skill_changes": （可选）技能变化，结构：{ "learn": ["新技能"], "forget": ["失去的技能"] }，仅当角色通过本次行为确实学到或失去了技能时填写
+   - "skill_changes": （可选）技能变化，结构：{ "learn": ["新技能"], "forget": ["失去的技能"] }。规则：①角色状态栏"已掌握技能"列出了现有技能，禁止在 learn 中重复添加已有的或与之高度相似的技能（名称包含关系或含义重叠均视为重复）；②每位角色最多保留15条技能，若已接近上限，添加新技能前请同时在 forget 中删除一条最不相关的旧技能；③技能名称要精炼（4-10字），避免冗长描述
    - "purchases": （可选）购买物品，结构：[{"item": "物品名称", "dest": "inventory 或 房间英文ID", "cost": 价格数字, "quantity": 数量（可选，默认1）}]。规则：①仅当角色确实去购物或网购时才填写；②cost 必须从 wallet 中扣除（stat_changes.wallet 不需要再重复扣）；③余额不足时不得购买；④物品要符合角色性格、职业和用途；⑤价格参考：日用品5-50，食材10-100，家居小物件50-500，电子产品500-5000，家具200-3000；⑥随身携带小物件（食材、外带食物、书籍、小礼物等）dest填"inventory"，家具/家电等固定物件填房间ID；⑦外卖/拼单等捆绑包必须拆分为独立物品（如外卖三份写成三明治×2、饮料×1等分别条目），不得写成一整条捆绑名称
    - "consume_items": （可选）本次行为中实际用尽或消耗掉的物品，结构：[{"item": "物品名称", "from": "inventory（背包）或 房间英文ID", "quantity": 数量（可选，默认1）}]。规则：①仅填写真正被用完的消耗品，如食材、零食、饮料、面膜、卫生纸等；②家具、家电、工具等耐用品不填；③物品必须确实存在于对应位置；④from填"inventory"表示消耗角色背包里的物品，填房间ID表示消耗房间里的物品；⑤有quantity字段时可消耗多份（如吃掉2个包子填quantity:2），背包里剩余份数会相应减少；⑥quantity不得超过背包实际持有数量
    - "item_actions": （可选）物品互动，结构：[{"type": "pick_up|put_down|give", "item": "物品名称", "quantity": 数量（可选，默认1）, "from_room": "房间ID（pick_up时填）", "to_room": "房间ID（put_down时填，留空则用当前房间）", "to_char": "角色名（give时填）"}]。规则：①pick_up从房间拾取物品入背包；②put_down将背包物品放到房间；③give将背包物品赠给同房间角色；④物品必须确实存在于对应位置；⑤give时quantity可大于1（如送2个饼干）
@@ -2511,6 +2524,7 @@ ${char.name} (${char.age}岁, ${char.personality})：
 - 疲劳度: ${Math.round(char.fatigueLevel || 0)}/100 (当日工作: ${Math.round((char.workHoursToday || 0) * 10) / 10}h, 连续工作天数: ${char.consecutiveWorkDays || 0})
 - 钱包: ¥${char.wallet}, 职业: ${char.career} (月收入: ¥${char.monthlyIncome})
 - 背包: ${char.inventory && char.inventory.length > 0 ? char.inventory.map(i => (i.quantity || 1) > 1 ? `${i.name}×${i.quantity}` : i.name).join('、') : '（空）'}
+- 已掌握技能: ${char.skills && char.skills.length > 0 ? char.skills.join('、') : '无特殊技能'}
 - 当前行为: ${char.currentAction}
 - 与他人关系: ${Object.entries(char.relationship).map(([id, val]) => `与${gameState.characters[id]?.name || id}: ${getRelationshipLevel(val)}`).join(', ')}
 `).join('\n')}
@@ -2707,23 +2721,29 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
             if (Array.isArray(action.consume_items) && action.consume_items.length > 0) {
                 for (const consumed of action.consume_items) {
                     if (!consumed.item) continue;
-                    const consumeFrom = consumed.from || consumed.room; // 兼容旧字段
-                    if (consumeFrom === 'inventory') {
+                    const consumeFrom = (consumed.from || consumed.room || '').trim(); // 兼容旧字段
+                    const cQty = Math.max(1, parseInt(consumed.quantity) || 1);
+                    // 判断是否来自背包：AI 有时写 "inventory（背包）" 或 "背包" 等变体，统一兼容
+                    const isInventorySource = !consumeFrom
+                        || consumeFrom.startsWith('inventory')
+                        || consumeFrom === '背包'
+                        || consumeFrom === 'backpack';
+                    if (isInventorySource) {
                         // 从背包消耗（有就删，没有静默跳过）
-                        const cQty = consumed.quantity || 1;
                         if (removeFromInventory(char, consumed.item, cQty)) {
                             const cLabel = cQty > 1 ? ` ×${cQty}` : '';
                             addLog(`${char.name}用掉了背包里的「${consumed.item}」${cLabel}。`, 'system');
                         }
-                    } else if (consumeFrom) {
+                    } else {
                         // 从房间消耗
                         const targetRoom = gameState.apartment.rooms[consumeFrom];
                         if (!targetRoom) continue;
                         const idx = targetRoom.items.indexOf(consumed.item);
                         if (idx === -1) {
                             // 房间找不到则尝试从背包兜底
-                            if (removeFromInventory(char, consumed.item)) {
-                                addLog(`${char.name}用掉了背包里的「${consumed.item}」。`, 'system');
+                            if (removeFromInventory(char, consumed.item, cQty)) {
+                                const cLabel = cQty > 1 ? ` ×${cQty}` : '';
+                                addLog(`${char.name}用掉了背包里的「${consumed.item}」${cLabel}。`, 'system');
                             }
                             continue;
                         }
@@ -2849,6 +2869,12 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
 
             // 记录互动（累积到当天记录，供夜晚统一结算）
             if (action.interaction_with) {
+                // AI 有时返回数组，统一转为 "名A、名B" 字符串
+                if (Array.isArray(action.interaction_with)) {
+                    action.interaction_with = action.interaction_with.join('、');
+                } else {
+                    action.interaction_with = String(action.interaction_with);
+                }
                 const pairKey = [char.name, ...action.interaction_with.split('、')].sort().join(',');
                 if (!shownInteractionPairs.has(pairKey)) {
                     shownInteractionPairs.add(pairKey);
@@ -2909,6 +2935,11 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
                         role: n.role,
                         note: n.note || ''
                     });
+                    // 超出上限时移除最早加入的 NPC
+                    if (activeConfig.npcs.length > 20) {
+                        const removed = activeConfig.npcs.splice(0, 1)[0];
+                        console.log(`[NPC上限] 移除最旧配角：${removed.name}`);
+                    }
                     addLog(`📋 新增配角：${n.name}（${n.role}）`, 'system');
                 }
             }
@@ -6009,6 +6040,50 @@ function applyLogFontSize(size) {
     localStorage.setItem('log_font_size', px);
 }
 
+function initPanelCollapseButtons() {
+    const header = document.querySelector('header');
+    const infoPanel = document.getElementById('info-panel');
+    const mainContent = document.getElementById('main-content');
+    const gameContainer = document.getElementById('game-container');
+    const headerToggleBtn = document.getElementById('header-toggle-btn');
+    const infoPanelToggleBtn = document.getElementById('info-panel-toggle-btn');
+    const stateToggleBtn = document.getElementById('state-toggle-btn');
+
+    const restoreCollapsed = (el, cls, storageKey, btn, expandSymbol, collapseSymbol, containerCls) => {
+        if (localStorage.getItem(storageKey) === 'true') {
+            el.classList.add(cls);
+            if (containerCls) gameContainer.classList.add(containerCls);
+            btn.textContent = expandSymbol;
+        } else {
+            btn.textContent = collapseSymbol;
+        }
+    };
+
+    restoreCollapsed(header, 'collapsed', 'ui_header_collapsed', headerToggleBtn, '▼', '▲', null);
+    restoreCollapsed(infoPanel, 'collapsed', 'ui_info_panel_collapsed', infoPanelToggleBtn, '▶', '▼', 'info-collapsed');
+    restoreCollapsed(mainContent, 'collapsed', 'ui_state_collapsed', stateToggleBtn, '▶', '▼', 'state-collapsed');
+
+    headerToggleBtn.addEventListener('click', () => {
+        const isCollapsed = header.classList.toggle('collapsed');
+        headerToggleBtn.textContent = isCollapsed ? '▼' : '▲';
+        localStorage.setItem('ui_header_collapsed', isCollapsed);
+    });
+
+    infoPanelToggleBtn.addEventListener('click', () => {
+        const isCollapsed = infoPanel.classList.toggle('collapsed');
+        gameContainer.classList.toggle('info-collapsed', isCollapsed);
+        infoPanelToggleBtn.textContent = isCollapsed ? '▶' : '▼';
+        localStorage.setItem('ui_info_panel_collapsed', isCollapsed);
+    });
+
+    stateToggleBtn.addEventListener('click', () => {
+        const isCollapsed = mainContent.classList.toggle('collapsed');
+        gameContainer.classList.toggle('state-collapsed', isCollapsed);
+        stateToggleBtn.textContent = isCollapsed ? '▶' : '▼';
+        localStorage.setItem('ui_state_collapsed', isCollapsed);
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('open-artwork-log-btn').addEventListener('click', openArtworkLogModal);
     document.getElementById('close-artwork-log-btn').addEventListener('click', closeArtworkLogModal);
@@ -6018,6 +6093,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === e.currentTarget) closeArtworkLogModal();
     });
     initModelToggle();
+    initPanelCollapseButtons();
     applyLogFontSize(localStorage.getItem('log_font_size') || '14');
 
     // 尝试加载自动存档

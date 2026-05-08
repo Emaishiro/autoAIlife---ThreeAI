@@ -8,6 +8,14 @@
     <meta name="theme-color" content="#0d0d0d">
     <title>文字生活模拟</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-7BY4GMQ9J8"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-7BY4GMQ9J8');
+    </script>
 </head>
 <body>
     <!-- 游戏前设置面板（全屏覆盖） -->
@@ -153,11 +161,12 @@
                 <span>时间倍率: <span id="time-multiplier">1x</span></span>
                 <span>节假日: <span id="holiday-info">工作日</span></span>
             </div>
+            <button id="header-toggle-btn" class="panel-collapse-btn" title="折叠状态栏">▲</button>
         </header>
 
         <main id="main-content">
             <section id="apartment-section">
-                <h2>公寓状态</h2>
+                <h2><span>公寓状态</span><button id="state-toggle-btn" class="panel-collapse-btn" title="折叠/展开状态面板">▼</button></h2>
                 <div id="rooms-container">
                     <!-- 房间状态将通过JS动态生成 -->
                 </div>
@@ -177,7 +186,11 @@
         </section>
 
         <aside id="info-panel">
-            <h3>游戏控制</h3>
+            <div class="panel-collapse-bar">
+                <span>游戏控制</span>
+                <button id="info-panel-toggle-btn" class="panel-collapse-btn" title="折叠控制面板">▼</button>
+            </div>
+            <div class="panel-body">
             <div id="api-config">
                 <input type="password" id="api-key" placeholder="输入 DeepSeek API Key">
                 <span id="api-key-status" style="font-size: 11px; color: #888; display: none;">✓ API Key已设置</span>
@@ -237,6 +250,7 @@
                 </small>
                 <input type="file" id="import-input" style="display: none;" accept=".json,.txt">
             </div>
+            </div><!-- /.panel-body -->
         </aside>
 
         <!-- 游戏中编辑抽屉（阶段10） -->

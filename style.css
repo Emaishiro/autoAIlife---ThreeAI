@@ -77,6 +77,7 @@ body {
 
 header {
     grid-area: header;
+    position: relative;
     border-bottom: none;
     box-shadow: 0 1px 0 var(--border-subtle), 0 2px 12px rgba(0, 255, 65, 0.04);
     padding: 10px 0;
@@ -85,6 +86,7 @@ header {
     align-items: center;
     flex-wrap: wrap;
     gap: 10px;
+    transition: padding 0.2s ease;
 }
 
 header h1 {
@@ -165,6 +167,10 @@ header h1 {
     text-transform: uppercase;
     opacity: 0.7;
     font-weight: normal;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
 }
 
 #rooms-container, #characters-container {
@@ -436,11 +442,12 @@ header h1 {
     border: 1px solid var(--border-subtle);
     padding: 10px;
     border-radius: 6px;
-    overflow-y: auto;
+    overflow-y: hidden;
     min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 4px;
+    transition: padding 0.2s ease;
 }
 
 #info-panel h3 {
@@ -452,6 +459,161 @@ header h1 {
     font-weight: normal;
     border-bottom: 1px solid var(--border-subtle);
     padding-bottom: 5px;
+}
+
+/* ===== 面板折叠系统 ===== */
+.panel-collapse-btn {
+    background: transparent;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-muted);
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border-radius: 4px;
+    font-size: 0.6em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+    flex-shrink: 0;
+    user-select: none;
+}
+.panel-collapse-btn:hover {
+    color: var(--accent-green);
+    border-color: var(--accent-green);
+    background: rgba(0, 255, 65, 0.06);
+}
+
+/* Header 折叠按钮 */
+#header-toggle-btn {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+}
+header.collapsed {
+    padding: 0;
+    min-height: 26px;
+}
+header.collapsed #status-bar {
+    display: none;
+}
+
+/* Info Panel 折叠条 */
+.panel-collapse-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 0.75em;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+/* Info Panel 内容区（可滚动） */
+#info-panel .panel-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+    min-height: 0;
+    flex: 1;
+    transition: opacity 0.15s ease;
+}
+#info-panel.collapsed .panel-body {
+    display: none;
+}
+#info-panel.collapsed {
+    padding-bottom: 10px;
+}
+
+/* 状态面板折叠 */
+#main-content.collapsed #rooms-container,
+#main-content.collapsed #characters-section {
+    display: none;
+}
+#main-content.collapsed {
+    overflow: hidden;
+    gap: 0;
+}
+#main-content.collapsed #apartment-section {
+    flex: 0 0 auto;
+    overflow: visible;
+    border-radius: 0;
+    padding: 4px 2px;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+}
+#main-content.collapsed #apartment-section h2 {
+    margin: 0;
+}
+#main-content.collapsed #apartment-section h2 span {
+    display: none;
+}
+
+/* PC横屏：折叠时收缩 grid 列 */
+@media (min-width: 640px) {
+    #game-container.info-collapsed {
+        grid-template-columns: minmax(180px, 240px) minmax(0, 1fr) 36px;
+    }
+    #game-container.state-collapsed {
+        grid-template-columns: 22px minmax(0, 1fr) minmax(155px, 195px);
+    }
+    #game-container.state-collapsed.info-collapsed {
+        grid-template-columns: 22px minmax(0, 1fr) 36px;
+    }
+    #info-panel.collapsed {
+        padding: 6px 4px;
+        align-items: center;
+    }
+    #info-panel.collapsed .panel-collapse-bar {
+        flex-direction: column;
+        border-bottom: none;
+        border-right: 1px solid var(--border-subtle);
+        padding-bottom: 0;
+        padding-right: 0;
+        justify-content: flex-start;
+        align-items: center;
+        width: 100%;
+        gap: 8px;
+        height: 100%;
+    }
+    #info-panel.collapsed .panel-collapse-bar > span {
+        writing-mode: vertical-rl;
+        white-space: nowrap;
+        font-size: 0.65em;
+        letter-spacing: 0.12em;
+        opacity: 0.6;
+    }
+}
+
+/* 移动端：折叠时收缩 grid */
+@media (max-width: 639px) {
+    #header-toggle-btn {
+        top: 5px;
+        right: 0;
+        transform: none;
+    }
+    header.collapsed #header-toggle-btn {
+        top: 50%;
+        transform: translateY(-50%);
+    }
+    #game-container.info-collapsed {
+        grid-template-rows: auto 1fr 36px;
+    }
+    #game-container.state-collapsed {
+        grid-template-columns: 22px 1fr;
+    }
+}
+@media (max-width: 479px) {
+    #game-container.info-collapsed {
+        grid-template-rows: auto 1fr 36px;
+    }
 }
 
 /* 控制面板内的各分组 */
@@ -805,7 +967,12 @@ button:hover {
         flex-direction: column;
         gap: 4px;
         padding: 6px;
-        padding-bottom: calc(6px + env(safe-area-inset-bottom));
+        padding-bottom: 6px;
+        overflow-y: hidden;
+    }
+
+    #info-panel .panel-body {
+        padding-bottom: env(safe-area-inset-bottom);
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
     }
@@ -903,6 +1070,14 @@ button:hover {
     .stat {
         padding: 1px 5px;
         font-size: 0.72em;
+    }
+
+    .panel-collapse-btn {
+        width: 18px;
+        height: 18px;
+        min-height: unset;
+        padding: 0;
+        font-size: 0.6em;
     }
 
     button {
