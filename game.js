@@ -308,6 +308,7 @@ function initGameStateFromConfig(config) {
         lastArtworkPromptTime: 0,
         lastActionTime: null,
         dayCount: 1,
+        loopCount: 0,
         dailyInteractions: [],
         recentEvents: [],  // 近几轮关键事件，供下轮 prompt 使用
         coupleStatus: {}   // 恋爱/婚姻状态 key:"charId1,charId2"(排序) value:{status,since}
@@ -609,7 +610,7 @@ function updateCharactersUI() {
                 : '<div class="char-inventory"><span class="inventory-label">背包:</span> <span class="inventory-empty">空</span></div>'
             }
             <div class="stats">
-                ${Object.entries(char.relationship).map(([id, val]) => `<span class="stat">与${gameState.characters[id]?.name || id}: ${val}（${getRelationshipLevel(val)}）</span>`).join('')}
+                ${Object.entries(char.relationship).filter(([id]) => gameState.characters[id]).map(([id, val]) => `<span class="stat">与${gameState.characters[id].name}: ${val}（${getRelationshipLevel(val)}）</span>`).join('')}
             </div>
         `;
         ui.charactersContainer.appendChild(charDiv);
@@ -1373,7 +1374,8 @@ async function callDeepseekAPI(messages, useJsonFormat = true, maxTokens = 8000)
     }
 
     const data = await response.json();
-    console.log('[DeepSeek 原始响应]', data.choices?.[0]?.message || data);
+    if (!data) throw new Error('API返回空响应体（null）');
+    console.log('[DeepSeek 原始响应]', data?.choices?.[0]?.message || data);
     if (data.usage && window._sessionTokens) {
         window._sessionTokens.prompt += data.usage.prompt_tokens || 0;
         window._sessionTokens.completion += data.usage.completion_tokens || 0;
@@ -2507,6 +2509,7 @@ async function gameLoop() {
     if (gameState.isProcessing || gameState.isPaused || gameState.shouldStop) return;
 
     gameState.isProcessing = true;
+    gameState.loopCount = (gameState.loopCount || 0) + 1;
 
     try {
 
@@ -3021,6 +3024,9 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
     } finally {
         gameState.isProcessing = false;
         updateUI();
+
+        // 每轮结束做快照存档
+        autoSaveSnapshot();
     }
 
     // 根据时间倍率设置下一次循环
@@ -3058,7 +3064,7 @@ function advanceGameTime(minutes) {
         gameState.dayCount++;
         dayChanged = true;
         addLog(`>>> 新的一天开始了！现在是第${gameState.dayCount}天 <<<`, 'system');
-        autoSave();
+        autoSaveDaily();
 
         // 每天重置：累计工作小时数清零，处理连续工作天数
         for (const char of Object.values(gameState.characters)) {
@@ -3407,19 +3413,13 @@ function refreshSaveUI() {
 }
 
 // 保存游戏
-// 自动存档（每过一个游戏天触发，写入专用槽）
-function autoSave() {
-    // 调试：检查角色是否有relationship字段
-    for (const [charId, char] of Object.entries(gameState.characters)) {
-        if (!char.relationship || typeof char.relationship !== 'object') {
-            console.warn(`❌ 自动保存前检测到角色 ${charId} (${char.name}) 缺少 relationship 字段`);
-        } else {
-            const relationshipCount = Object.keys(char.relationship).length;
-            console.log(`✅ 角色 ${charId} (${char.name}) 有 ${relationshipCount} 个关系值:`, char.relationship);
-        }
-    }
 
-    const saveData = {
+// 快照槽数量（每轮 gameLoop 轮转）
+const AUTO_SAVE_SLOTS = 5;
+
+// 构造自动存档数据对象（两种自动存档共用）
+function buildAutoSaveData() {
+    return {
         configSnapshot: deepClone(activeConfig),
         gameState: {
             startTime: gameState.startTime,
@@ -3435,26 +3435,35 @@ function autoSave() {
         saveTimestamp: formatGameTime(new Date()),
         isAutoSave: true
     };
+}
 
-    // 调试：检查保存的数据中是否有relationship字段
-    const firstCharId = Object.keys(saveData.gameState.characters)[0];
-    if (firstCharId) {
-        const firstChar = saveData.gameState.characters[firstCharId];
-        console.log(`🔍 自动保存数据中第一个角色 ${firstCharId} (${firstChar?.name}) 的 relationship 字段:`, firstChar?.relationship);
-    }
-
-    localStorage.setItem('apartment_sim_autosave', JSON.stringify(saveData));
-    addLog(`💾 自动存档（第${gameState.dayCount}天）`, 'system');
+// 换天存档 — 固定写入 apartment_sim_autosave_daily，1个槽
+function autoSaveDaily() {
+    localStorage.setItem('apartment_sim_autosave_daily', JSON.stringify(buildAutoSaveData()));
+    addLog(`💾 每日自动存档（第${gameState.dayCount}天）`, 'system');
     renderSaveSlots();
 }
 
-// 尝试在页面启动时加载自动存档
-function tryLoadAutoSaveOnStartup() {
-    const rawData = localStorage.getItem('apartment_sim_autosave');
-    if (!rawData) {
-        console.log('ℹ️ 无自动存档，使用初始配置');
-        return false;
+// 每轮快照存档 — 轮转写入 apartment_sim_autosave_0~4，0 始终最新，静默存不提示
+function autoSaveSnapshot() {
+    const saveData = buildAutoSaveData();
+    for (let i = AUTO_SAVE_SLOTS - 1; i > 0; i--) {
+        const prev = localStorage.getItem(`apartment_sim_autosave_${i - 1}`);
+        if (prev) {
+            localStorage.setItem(`apartment_sim_autosave_${i}`, prev);
+        } else {
+            localStorage.removeItem(`apartment_sim_autosave_${i}`);
+        }
     }
+    localStorage.setItem('apartment_sim_autosave_0', JSON.stringify(saveData));
+}
+
+// 尝试在页面启动时加载自动存档（快照0优先，其次daily，最后兼容旧key）
+function tryLoadAutoSaveOnStartup() {
+    const rawData = localStorage.getItem('apartment_sim_autosave_0')
+                 || localStorage.getItem('apartment_sim_autosave_daily')
+                 || localStorage.getItem('apartment_sim_autosave');
+    if (!rawData) return false;
 
     try {
         const data = JSON.parse(rawData);
@@ -3465,14 +3474,10 @@ function tryLoadAutoSaveOnStartup() {
             return false;
         }
 
-        console.log('🔄 检测到自动存档，正在恢复游戏状态...');
-
-        // 恢复配置（世界设定、场景名称、NPC 等）
         if (data.configSnapshot) {
             activeConfig = deepClone(data.configSnapshot);
         }
 
-        // 恢复游戏状态
         gameState.startTime = new Date(loadedState.startTime);
         gameState.currentTime = new Date(loadedState.currentTime);
         gameState.timeMultiplier = loadedState.timeMultiplier;
@@ -3483,42 +3488,45 @@ function tryLoadAutoSaveOnStartup() {
         gameState.dailyInteractions = loadedState.dailyInteractions || [];
         gameState.coupleStatus = loadedState.coupleStatus || {};
 
-        // 设置游戏状态为暂停（等待用户手动开始）
         gameState.isPaused = true;
         gameState.isProcessing = false;
         gameState.shouldStop = false;
 
-        // 确保角色有必要的字段（兼容性）
         for (const [charId, char] of Object.entries(gameState.characters)) {
             if (!char.inventory) char.inventory = [];
-            // 检查 relationship 字段
+            const configChar = activeConfig?.characters?.find(c => c.id === charId);
             if (!char.relationship || typeof char.relationship !== 'object') {
-                console.warn(`❌ 启动时加载：角色 ${charId} (${char.name}) 缺少 relationship 字段，正在初始化`);
                 char.relationship = {};
-
-                // 尝试从 config 恢复
-                const configChar = activeConfig?.characters?.find(c => c.id === charId);
-                if (configChar && configChar.initialRelationships) {
+                if (configChar?.initialRelationships) {
                     char.relationship = deepClone(configChar.initialRelationships);
-                    console.log(`  ✅ 从 config 恢复了 relationship 字段`);
                 }
-            } else {
-                const relationshipCount = Object.keys(char.relationship).length;
-                console.log(`✅ 角色 ${charId} (${char.name}) 有 ${relationshipCount} 个关系值`);
             }
-
-            // 确保其他必要字段存在
-            if (char.status === undefined) char.status = "awake";
-            if (char.isSleeping === undefined) char.isSleeping = false;
-
-            // 转换 Date 字段
-            if (char.lastRestTime) char.lastRestTime = new Date(char.lastRestTime);
-            if (char.lastWorkCheckTime) char.lastWorkCheckTime = new Date(char.lastWorkCheckTime);
-            if (char.sleepStartTime) char.sleepStartTime = new Date(char.sleepStartTime);
+            if (!char.careerPrompt) char.careerPrompt = configChar?.careerPrompt || '';
+            if (!char.personality)  char.personality  = configChar?.personality  || '';
+            if (char.persona === undefined) char.persona = configChar?.persona   || '';
+            if (!char.career)       char.career       = configChar?.career       || '';
+            if (!char.color)        char.color        = configChar?.color        || '#ff00ff';
+            if (char.status === undefined) char.status = 'awake';
+            if (char.isSleeping === undefined) char.isSleeping = char.status === 'sleeping';
+            if (char.isSleeping && char.status !== 'sleeping') char.status = 'sleeping';
+            if (char.status === 'sleeping' && !char.isSleeping) char.isSleeping = true;
+            if (char.energy <= 0) {
+                char.isSleeping = false;
+                char.status = 'unconscious';
+                char.currentAction = '晕倒中';
+            } else if (char.status === 'unconscious' && char.energy >= 30) {
+                char.status = 'awake';
+            }
+            if (char.status === 'sleeping') {
+                char.currentAction = '在熟睡中...';
+                if (!char.sleepDuration) char.sleepDuration = 0;
+                char.sleepStartTime = char.sleepStartTime ? new Date(char.sleepStartTime) : gameState.currentTime;
+            }
+            if (char.lastDisturbance)    char.lastDisturbance    = new Date(char.lastDisturbance);
+            if (char.lastRestTime)       char.lastRestTime       = new Date(char.lastRestTime);
+            if (char.lastWorkCheckTime)  char.lastWorkCheckTime  = new Date(char.lastWorkCheckTime);
         }
 
-        console.log('✅ 自动存档恢复完成，游戏时间:', formatGameTime(gameState.currentTime), '第', gameState.dayCount, '天');
-        console.log('✅ 游戏状态: 暂停中，等待用户点击"开始模拟"');
         return true;
     } catch (error) {
         console.error('❌ 自动存档恢复失败:', error);
@@ -3572,10 +3580,9 @@ function loadGame(slotIndex) {
         gameState.timeMultiplier = loadedState.timeMultiplier;
         gameState.dayCount = loadedState.dayCount;
         gameState.characters = loadedState.characters;
-        // 确保角色有状态字段（兼容旧存档）
+        // 兼容旧存档：回填缺失字段
         for (const [charId, char] of Object.entries(gameState.characters)) {
             if (!char.inventory) char.inventory = [];
-            // 从 activeConfig 回填旧存档中缺失的静态描述字段
             const configChar = activeConfig?.characters?.find(c => c.id === charId);
             if (!char.careerPrompt) char.careerPrompt = configChar?.careerPrompt || '';
             if (!char.personality)  char.personality  = configChar?.personality  || '';
@@ -3625,21 +3632,11 @@ function loadGame(slotIndex) {
                 char.lastWorkCheckTime = new Date(char.lastWorkCheckTime);
             }
 
-            // 调试：检查 relationship 字段
             if (!char.relationship || typeof char.relationship !== 'object') {
-                console.warn(`❌ 加载存档时检测到角色 ${charId} (${char.name}) 缺少 relationship 字段，正在初始化`);
                 char.relationship = {};
-
-                // 尝试从 config 恢复 initialRelationships
-                if (configChar && configChar.initialRelationships) {
+                if (configChar?.initialRelationships) {
                     char.relationship = deepClone(configChar.initialRelationships);
-                    console.log(`  ✅ 从 config 恢复了 relationship:`, char.relationship);
-                } else {
-                    console.log(`  ⚠️  config 中也无 initialRelationships，创建空对象`);
                 }
-            } else {
-                const relationshipCount = Object.keys(char.relationship).length;
-                console.log(`✅ 角色 ${charId} (${char.name}) 加载了 ${relationshipCount} 个关系值:`, char.relationship);
             }
         }
         if (loadedState.apartment) gameState.apartment = loadedState.apartment;
@@ -3727,7 +3724,7 @@ function extractJsonFromExportFormat(text) {
     }
 }
 
-// 导出所有存档为单个JSON文件（易读 + 可恢复）
+// 导出所有存档为单个JSON文件（仅手动存档槽，不含自动存档）
 function exportAllSaves() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const allSaves = {};
@@ -3816,7 +3813,7 @@ function importSaves(event) {
 
             let count = 0;
 
-            // 写入 localStorage
+            // 写入 localStorage（仅手动存档槽，不写自动存档）
             for (const key in importedData) {
                 if (key.startsWith('apartment_sim_save_')) {
                     const value = typeof importedData[key] === 'string'
@@ -3952,10 +3949,61 @@ function setupTabNavigation() {
     });
 }
 
+// 继续模拟 — 读取最新自动存档后直接启动游戏
+function continueSaveToSetup() {
+    const key = localStorage.getItem('apartment_sim_autosave_0')
+        ? 'apartment_sim_autosave_0'
+        : 'apartment_sim_autosave_daily';
+    const rawData = localStorage.getItem(key);
+    if (!rawData) { alert('暂无自动存档'); return; }
+
+    try {
+        const saveData = JSON.parse(rawData);
+        setupPanelState.selectedPreset = null;
+        if (saveData.configSnapshot) {
+            setupPanelState.currentConfig = deepClone(saveData.configSnapshot);
+        }
+        setupPanelState.loadedGameState = saveData.gameState ? deepClone(saveData.gameState) : null;
+
+        // 用存档中实际关系度覆盖 configSnapshot 的初始值
+        if (setupPanelState.loadedGameState?.characters) {
+            (setupPanelState.currentConfig.characters || []).forEach(configChar => {
+                const savedChar = setupPanelState.loadedGameState.characters[configChar.id];
+                if (savedChar?.relationship) {
+                    configChar.initialRelationships = deepClone(savedChar.relationship);
+                }
+            });
+        }
+
+        syncSetupRelationshipValuesFromConfig();
+        startGameFromSetup();
+    } catch (e) {
+        alert(`读取自动存档失败: ${e.message}`);
+    }
+}
+
 // 渲染预设卡片
 function renderPresetCards() {
     const container = document.getElementById('preset-cards-container');
     container.innerHTML = '';
+
+    // 继续模拟按钮区（有自动存档时高亮）
+    const hasAutoSave = !!(
+        localStorage.getItem('apartment_sim_autosave_0') ||
+        localStorage.getItem('apartment_sim_autosave_daily')
+    );
+    const continueSection = document.createElement('div');
+    continueSection.style.marginBottom = '20px';
+    const continueBtn = document.createElement('button');
+    continueBtn.style.cssText = `width:100%; padding:14px; font-size:15px; font-weight:600; ${hasAutoSave ? 'background:#1a6b3a; border-color:#2ea05a;' : 'opacity:0.35; cursor:not-allowed;'}`;
+    continueBtn.className = 'btn-primary';
+    continueBtn.textContent = hasAutoSave ? '▶ 继续模拟（读取最新自动存档）' : '▶ 继续模拟（暂无自动存档）';
+    continueBtn.disabled = !hasAutoSave;
+    if (hasAutoSave) {
+        continueBtn.addEventListener('click', continueSaveToSetup);
+    }
+    continueSection.appendChild(continueBtn);
+    container.appendChild(continueSection);
 
     const builtinHeader = document.createElement('div');
     builtinHeader.className = 'template-section-header';
@@ -4335,8 +4383,15 @@ function renderCharacterEditor() {
                 </div>
             </div>
             <div class="editor-field-group">
-                <div class="editor-field-label">技能（用英文逗号分隔）</div>
-                <input type="text" value="${(char.skills || []).join(', ')}" onchange="updateCharSkills(${idx}, this.value)" placeholder="例如：编程, 数学, 逻辑分析" />
+                <div class="editor-field-label">技能</div>
+                <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; min-height: 22px;">
+                    ${(char.skills || []).map((skill, skillIdx) =>
+                        `<span class="skill-tag" onclick="removeSetupSkill(${idx}, ${skillIdx})">${skill} ✕</span>`
+                    ).join('')}
+                </div>
+                <input type="text" placeholder="输入技能，按 Enter 添加"
+                       onkeypress="if(event.key==='Enter'&&this.value.trim()){addSetupSkill(${idx},this.value.trim());this.value='';}"
+                       style="font-size: 12px;" />
             </div>
             <div class="editor-field-group">
                 <div class="editor-field-label">🎒 初始背包物品</div>
@@ -4590,6 +4645,21 @@ function updateCharSkills(idx, skillsString) {
     }
 }
 
+function addSetupSkill(idx, skill) {
+    const char = setupPanelState.currentConfig.characters[idx];
+    if (!char) return;
+    if (!char.skills) char.skills = [];
+    if (!char.skills.includes(skill)) char.skills.push(skill);
+    renderCharacterEditor();
+}
+
+function removeSetupSkill(idx, skillIdx) {
+    const char = setupPanelState.currentConfig.characters[idx];
+    if (!char || !char.skills) return;
+    char.skills.splice(skillIdx, 1);
+    renderCharacterEditor();
+}
+
 // 更新设置面板中的关系度值
 function updateSetupRelationship(relKey, value) {
     const parsedValue = Number.parseInt(value, 10);
@@ -4639,6 +4709,20 @@ function renderRoomEditor() {
             <div class="editor-field-group">
                 <div class="editor-field-label">描述</div>
                 <textarea onchange="updateRoomField(${idx}, 'description', this.value)" style="height: 60px;">${room.description}</textarea>
+            </div>
+            <div class="editor-field-group">
+                <div class="editor-field-label">初始物品</div>
+                <div id="room-items-${idx}" style="margin-bottom: 4px;">
+                    ${(room.items || []).map((item, itemIdx) => `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 2px 0;">
+                            <span style="font-size: 12px; color: #ccc;">${item}</span>
+                            <button onclick="removeSetupRoomItem(${idx}, ${itemIdx})" style="background: none; border: none; color: #ff4444; cursor: pointer; font-size: 11px; padding: 0 4px;">✕</button>
+                        </div>
+                    `).join('')}
+                </div>
+                <input type="text" placeholder="输入物品，按 Enter 添加"
+                       onkeypress="if(event.key==='Enter'&&this.value.trim()){addSetupRoomItem(${idx},this.value.trim());this.value='';}"
+                       style="font-size: 12px;" />
             </div>
         `;
         container.appendChild(item);
@@ -4690,6 +4774,21 @@ function updateRoomField(idx, field, value) {
     if (field === 'name') {
         renderCharacterEditor();
     }
+}
+
+function addSetupRoomItem(idx, item) {
+    const room = setupPanelState.currentConfig.rooms[idx];
+    if (!room) return;
+    if (!room.items) room.items = [];
+    room.items.push(item);
+    renderRoomEditor();
+}
+
+function removeSetupRoomItem(idx, itemIdx) {
+    const room = setupPanelState.currentConfig.rooms[idx];
+    if (!room || !room.items) return;
+    room.items.splice(itemIdx, 1);
+    renderRoomEditor();
 }
 
 // 事件绑定
@@ -4787,62 +4886,70 @@ function renderSaveSlots() {
         container.appendChild(slot);
     }
 
-    // 自动存档槽
-    const autoRaw = localStorage.getItem('apartment_sim_autosave');
-    const autoSlot = document.createElement('div');
-    if (autoRaw) {
-        try {
-            const saveData = JSON.parse(autoRaw);
-            const timestamp = saveData.saveTimestamp || '未知时间';
-            const charCount = saveData.configSnapshot?.characters?.length
-                            ?? Object.keys(saveData.gameState?.characters || {}).length;
-            const roomCount = saveData.configSnapshot?.rooms?.length
-                            ?? Object.keys(saveData.gameState?.apartment?.rooms || {}).length;
-            const gameTime = saveData.gameState?.currentTime || saveData.configSnapshot?.startTime;
-            const gameTimeStr = gameTime ? formatGameTime(new Date(gameTime)) : '未知';
-            const dayCount = saveData.gameState?.dayCount || 1;
-            const charLines = saveData.gameState?.characters
-                ? Object.values(saveData.gameState.characters)
-                    .map(c => `<span style="color:${c.color||'#ccc'}">${c.name}</span>：${c.currentAction || '未知'}`)
-                    .join('<br>')
-                : '无角色信息';
-
-            autoSlot.className = 'setup-save-slot';
-            autoSlot.innerHTML = `
+    // 辅助：渲染单个自动存档槽
+    function renderAutoSlot(key, title, loadFn) {
+        const raw = localStorage.getItem(key);
+        const slot = document.createElement('div');
+        if (raw) {
+            try {
+                const saveData = JSON.parse(raw);
+                const timestamp = saveData.saveTimestamp || '未知时间';
+                const charCount = saveData.configSnapshot?.characters?.length
+                                ?? Object.keys(saveData.gameState?.characters || {}).length;
+                const gameTime = saveData.gameState?.currentTime;
+                const gameTimeStr = gameTime ? formatGameTime(new Date(gameTime)) : '未知';
+                const dayCount = saveData.gameState?.dayCount || 1;
+                slot.className = 'setup-save-slot';
+                slot.innerHTML = `
+                    <div class="setup-save-slot-header">
+                        <div class="setup-save-slot-title">💾 ${title}</div>
+                        <div class="setup-save-slot-time">${timestamp}</div>
+                    </div>
+                    <div class="setup-save-slot-info">
+                        <strong>游戏时间:</strong> ${gameTimeStr}<br>
+                        <strong>第 ${dayCount} 天 / ${charCount} 人</strong>
+                    </div>
+                    <div class="setup-save-slot-actions">
+                        <button onclick="${loadFn}">读取此存档</button>
+                    </div>
+                `;
+            } catch (e) {
+                slot.className = 'setup-save-slot';
+                slot.innerHTML = `
+                    <div class="setup-save-slot-header">
+                        <div class="setup-save-slot-title">💾 ${title}</div>
+                    </div>
+                    <div class="setup-save-slot-info" style="color:#ff9500;">⚠️ 存档数据损坏</div>
+                `;
+            }
+        } else {
+            slot.className = 'setup-save-slot empty';
+            slot.innerHTML = `
                 <div class="setup-save-slot-header">
-                    <div class="setup-save-slot-title">💾 自动存档</div>
-                    <div class="setup-save-slot-time">${timestamp}</div>
+                    <div class="setup-save-slot-title">💾 ${title}</div>
                 </div>
-                <div class="setup-save-slot-info">
-                    <strong>游戏时间:</strong> ${gameTimeStr}<br>
-                    <strong>游戏天数:</strong> ${dayCount}<br>
-                    <strong>角色 (${charCount}):</strong><br>
-                    <div style="margin: 4px 0 4px 8px; font-size: 11px; line-height: 1.7;">${charLines}</div>
-                    <strong>房间:</strong> ${roomCount} 个
-                </div>
-                <div class="setup-save-slot-actions">
-                    <button onclick="loadAutoSaveToSetup()">读取此存档</button>
-                </div>
-            `;
-        } catch (e) {
-            autoSlot.className = 'setup-save-slot';
-            autoSlot.innerHTML = `
-                <div class="setup-save-slot-header">
-                    <div class="setup-save-slot-title">💾 自动存档</div>
-                </div>
-                <div class="setup-save-slot-info" style="color: #ff9500;">⚠️ 存档数据损坏</div>
+                <div class="setup-save-slot-info">[暂无]</div>
             `;
         }
-    } else {
-        autoSlot.className = 'setup-save-slot empty';
-        autoSlot.innerHTML = `
-            <div class="setup-save-slot-header">
-                <div class="setup-save-slot-title">💾 自动存档</div>
-            </div>
-            <div class="setup-save-slot-info">[暂无自动存档]</div>
-        `;
+        return slot;
     }
-    container.appendChild(autoSlot);
+
+    // 每日存档槽
+    container.appendChild(renderAutoSlot(
+        'apartment_sim_autosave_daily',
+        '每日自动存档',
+        'loadAutoSaveSlotToSetup("daily")'
+    ));
+
+    // 每轮快照槽（0=最新，AUTO_SAVE_SLOTS-1=最旧）
+    const snapshotLabels = ['快照（最新）', '快照（-1轮）', '快照（-2轮）', '快照（-3轮）', '快照（-4轮）'];
+    for (let i = 0; i < AUTO_SAVE_SLOTS; i++) {
+        container.appendChild(renderAutoSlot(
+            `apartment_sim_autosave_${i}`,
+            snapshotLabels[i] || `快照（-${i}轮）`,
+            `loadAutoSaveSlotToSetup(${i})`
+        ));
+    }
 }
 
 // 从存档读取配置到设置面板
@@ -4901,6 +5008,17 @@ function loadSaveSlotToSetup(slotIndex) {
 
         // 保存游戏状态信息（用于恢复游戏进度）
         setupPanelState.loadedGameState = saveData.gameState ? deepClone(saveData.gameState) : null;
+
+        // 用存档中实际关系度覆盖 configSnapshot 的初始值，确保设置面板和开始游戏时使用真实值
+        if (setupPanelState.loadedGameState?.characters) {
+            (setupPanelState.currentConfig.characters || []).forEach(configChar => {
+                const savedChar = setupPanelState.loadedGameState.characters[configChar.id];
+                if (savedChar?.relationship) {
+                    configChar.initialRelationships = deepClone(savedChar.relationship);
+                }
+            });
+        }
+
         syncSetupRelationshipValuesFromConfig();
 
         // 刷新所有编辑器
@@ -4917,10 +5035,14 @@ function loadSaveSlotToSetup(slotIndex) {
     }
 }
 
-// 读取自动存档到设置面板
-function loadAutoSaveToSetup() {
-    const rawData = localStorage.getItem('apartment_sim_autosave');
-    if (!rawData) { alert('暂无自动存档'); return; }
+// 读取指定自动存档槽到设置面板
+// i = 数字(0~4) 读快照槽，i = "daily" 读每日存档槽
+const AUTO_SAVE_SLOT_LABELS = ['最新', '上一次', '-2轮', '-3轮', '-4轮'];
+function loadAutoSaveSlotToSetup(i) {
+    const key = i === 'daily' ? 'apartment_sim_autosave_daily' : `apartment_sim_autosave_${i}`;
+    const label = i === 'daily' ? '每日自动存档' : (AUTO_SAVE_SLOT_LABELS[i] || `快照${i}`);
+    const rawData = localStorage.getItem(key);
+    if (!rawData) { alert('该自动存档槽位为空'); return; }
 
     try {
         const saveData = JSON.parse(rawData);
@@ -4935,10 +5057,15 @@ function loadAutoSaveToSetup() {
         renderRoomEditor();
         syncWorldTabUI();
         document.querySelector('[data-tab="presets"]').click();
-        addLog('✅ 已从自动存档读取配置', 'system');
+        addLog(`✅ 已从自动存档（${label}）读取配置`, 'system');
     } catch (e) {
         alert(`读取自动存档失败: ${e.message}`);
     }
+}
+
+// 读取自动存档到设置面板（兼容旧调用，读取最新快照槽）
+function loadAutoSaveToSetup() {
+    loadAutoSaveSlotToSetup(0);
 }
 
 // 删除存档
@@ -4992,23 +5119,14 @@ function previewImportFile(event) {
                 importData = JSON.parse(jsonMatch[0]);
             }
 
-            console.log('导入的数据对象键:', Object.keys(importData));
-
             // 识别文件格式：是多个存档汇总还是单个存档
             const hasApartmentSimKey = Object.keys(importData).some(key => key.startsWith('apartment_sim_save_'));
 
-            // 显示预览
             if (hasApartmentSimKey) {
-                // 多个存档汇总，用第一个用于预览，但保存所有存档
-                console.log('检测到多个存档格式');
                 const firstKey = Object.keys(importData).find(key => key.startsWith('apartment_sim_save_'));
-                const firstSave = importData[firstKey];
-                console.log('用于预览的存档:', firstKey);
-                showImportPreview(firstSave);
-                window.pendingImportData = importData; // 保存所有存档
+                showImportPreview(importData[firstKey]);
+                window.pendingImportData = importData;
             } else {
-                // 单个存档
-                console.log('检测到单个存档格式');
                 showImportPreview(importData);
                 window.pendingImportData = importData;
             }
@@ -5111,12 +5229,10 @@ function confirmImportData() {
     try {
         const data = window.pendingImportData;
 
-        // 检查是否是多个存档汇总格式
+        // 检查是否是多个存档汇总格式（仅手动槽）
         const isMultipleSaves = Object.keys(data).some(key => key.startsWith('apartment_sim_save_'));
 
         if (isMultipleSaves) {
-            // 导入多个存档，直接保存到 localStorage
-            console.log('导入多个存档汇总');
             let importCount = 0;
             for (const key in data) {
                 if (key.startsWith('apartment_sim_save_')) {
@@ -5126,7 +5242,7 @@ function confirmImportData() {
                 }
             }
 
-            // 加载第一个存档到编辑面板（用于预览）
+            // 选第一个手动存档槽预览
             const firstKey = Object.keys(data).find(k => k.startsWith('apartment_sim_save_'));
             const firstSave = data[firstKey];
 
@@ -5134,6 +5250,13 @@ function confirmImportData() {
                 setupPanelState.currentConfig = deepClone(firstSave.configSnapshot);
                 if (firstSave.gameState) {
                     setupPanelState.loadedGameState = deepClone(firstSave.gameState);
+                    // 用存档中实际关系度覆盖 configSnapshot 的初始值
+                    (setupPanelState.currentConfig.characters || []).forEach(configChar => {
+                        const savedChar = setupPanelState.loadedGameState.characters?.[configChar.id];
+                        if (savedChar?.relationship) {
+                            configChar.initialRelationships = deepClone(savedChar.relationship);
+                        }
+                    });
                 }
             } else if (firstSave.gameState) {
                 // 从游戏状态重建配置
@@ -5188,6 +5311,13 @@ function confirmImportData() {
                 setupPanelState.currentConfig = deepClone(data.configSnapshot);
                 if (data.gameState) {
                     setupPanelState.loadedGameState = deepClone(data.gameState);
+                    // 用存档中实际关系度覆盖 configSnapshot 的初始值
+                    (setupPanelState.currentConfig.characters || []).forEach(configChar => {
+                        const savedChar = setupPanelState.loadedGameState.characters?.[configChar.id];
+                        if (savedChar?.relationship) {
+                            configChar.initialRelationships = deepClone(savedChar.relationship);
+                        }
+                    });
                 }
             } else if (data.gameState) {
                 // 从游戏状态重建配置
@@ -5275,18 +5405,23 @@ function startGameFromSetup() {
         // 覆盖前先保存 config 里的静态描述字段，旧存档可能没有这些字段
         for (const charId in loadedState.characters) {
             if (gameState.characters[charId]) {
-                const configBackup = {
-                    careerPrompt: gameState.characters[charId].careerPrompt,
-                    personality:  gameState.characters[charId].personality,
-                    career:       gameState.characters[charId].career,
-                    color:        gameState.characters[charId].color,
-                };
                 gameState.characters[charId] = deepClone(loadedState.characters[charId]);
-                const char = gameState.characters[charId];
-                if (!char.careerPrompt) char.careerPrompt = configBackup.careerPrompt || '';
-                if (!char.personality)  char.personality  = configBackup.personality  || '';
-                if (!char.career)       char.career       = configBackup.career       || '';
-                if (!char.color)        char.color        = configBackup.color        || '#ff00ff';
+                // 始终用 config 里的静态字段覆盖存档值，确保开始界面的修改生效
+                const configChar = (setupPanelState.currentConfig.characters || []).find(c => c.id === charId);
+                if (configChar) {
+                    const char = gameState.characters[charId];
+                    char.name         = configChar.name;
+                    char.color        = configChar.color        || '#ff00ff';
+                    char.gender       = configChar.gender       || char.gender;
+                    char.age          = configChar.age          ?? char.age;
+                    char.personality  = configChar.personality  || char.personality  || '';
+                    char.persona      = configChar.persona      ?? char.persona      ?? '';
+                    char.career       = configChar.career       || char.career       || '';
+                    char.monthlyIncome= configChar.monthlyIncome ?? char.monthlyIncome;
+                    char.careerPrompt = configChar.careerPrompt || char.careerPrompt || '';
+                    char.skills       = [...(configChar.skills || [])];
+                    char.bedroomId    = configChar.bedroomId    || char.bedroomId    || '';
+                }
             }
         }
 
@@ -5323,6 +5458,42 @@ function startGameFromSetup() {
         setupPanelState.loadedGameState = null;
     }
 
+    // 清理每个角色 relationship 中已不存在于 gameState 的角色 ID
+    for (const char of Object.values(gameState.characters)) {
+        if (char.relationship && typeof char.relationship === 'object') {
+            for (const otherId of Object.keys(char.relationship)) {
+                if (!gameState.characters[otherId]) {
+                    delete char.relationship[otherId];
+                }
+            }
+        }
+    }
+
+    // 补充 config 中新增但存档里没有的房间，移除 config 中已删除但存档里还有的房间
+    const configRoomIds = new Set((setupPanelState.currentConfig.rooms || []).map(r => r.id));
+    // 删除存档中已不在 config 里的房间
+    for (const roomId of Object.keys(gameState.apartment.rooms)) {
+        if (!configRoomIds.has(roomId)) {
+            delete gameState.apartment.rooms[roomId];
+        }
+    }
+    // 补充新增房间；已有房间同步 config 里的名字和描述（保留存档中的 items）
+    for (const roomConfig of (setupPanelState.currentConfig.rooms || [])) {
+        if (!gameState.apartment.rooms[roomConfig.id]) {
+            gameState.apartment.rooms[roomConfig.id] = {
+                name: roomConfig.name,
+                description: roomConfig.description,
+                items: [...roomConfig.items]
+            };
+        } else {
+            gameState.apartment.rooms[roomConfig.id].name = roomConfig.name;
+            gameState.apartment.rooms[roomConfig.id].description = roomConfig.description;
+            gameState.apartment.rooms[roomConfig.id].items = [...roomConfig.items];
+        }
+    }
+    // 重建房间连接关系
+    gameState.apartment.connections = buildRoomConnections(setupPanelState.currentConfig.rooms || []);
+
     // 应用关系度值到 gameState
     const chars = setupPanelState.currentConfig.characters || [];
     for (let i = 0; i < chars.length; i++) {
@@ -5338,6 +5509,24 @@ function startGameFromSetup() {
                 }
                 char1.relationship[chars[j].id] = relValue ?? 0;
             }
+        }
+    }
+
+    // 修正角色位置：如果所在房间已被删除，移到客厅（或第一个可用房间）
+    const fallbackRoom = gameState.apartment.rooms['livingRoom']
+        ? 'livingRoom'
+        : Object.keys(gameState.apartment.rooms)[0] || 'outside';
+    for (const char of Object.values(gameState.characters)) {
+        if (char.currentRoom !== 'outside' && !gameState.apartment.rooms[char.currentRoom]) {
+            char.currentRoom = fallbackRoom;
+        }
+    }
+
+    // 清理 coupleStatus 中涉及已删除角色的配对记录
+    for (const key of Object.keys(gameState.coupleStatus || {})) {
+        const [id1, id2] = key.split(',');
+        if (!gameState.characters[id1] || !gameState.characters[id2]) {
+            delete gameState.coupleStatus[key];
         }
     }
 
@@ -5365,7 +5554,9 @@ function startGameFromSetup() {
     updateUI();
     applyCharacterColors();
     addLog("公寓生活模拟器已启动！");
-    addLog(`已加载配置：${setupPanelState.selectedPreset ?? '自定义配置'}`);
+    if (setupPanelState.selectedPreset) {
+        addLog(`已加载预设：${GAME_PRESETS[setupPanelState.selectedPreset]?.label ?? setupPanelState.selectedPreset}`);
+    }
 
     // 直接启动游戏循环（避免按钮文字为"重置模拟"时误触 resetGame）
     ui.startBtn.innerText = "重置模拟";
