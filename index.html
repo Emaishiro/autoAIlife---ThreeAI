@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#0d0d0d">
     <title>文字生活模拟</title>
-    <script>const _V = '2026050805';</script>
+    <script>const _V = '2026051001';</script>
     <script>document.write('<link rel="stylesheet" href="style.css?v=' + _V + '">');</script>
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-7BY4GMQ9J8"></script>
@@ -148,6 +148,14 @@
                 <div class="api-key-input-group">
                     <input type="password" id="setup-api-key" placeholder="输入 DeepSeek API Key（可选，留空则使用模拟模式）" />
                 </div>
+                <!-- 中转商设置（折叠） -->
+                <div id="advanced-api-section" style="display:none;">
+                    <button id="advanced-api-toggle" type="button">▶ 高级：使用中转商地址</button>
+                    <div id="advanced-api-body" style="display:none;">
+                        <p style="margin: 6px 0 4px; font-size: 12px; color: #888;">替换为中转商提供的 API 地址，留空使用官方地址。</p>
+                        <input type="text" id="setup-api-endpoint" placeholder="https://api.deepseek.com/chat/completions" autocomplete="off" spellcheck="false" />
+                    </div>
+                </div>
                 <div class="setup-actions">
                     <button id="start-game-btn" class="btn-start">开始游戏</button>
                 </div>
@@ -247,11 +255,12 @@
             </div>
             <div id="save-transfer">
                 <button id="export-btn">导出全部存档</button>
-                </small>
-                <button id="import-btn" style="margin-top: 12px;">导入存档文件</button>
-                </small>
+                <button id="import-btn">导入存档文件</button>
                 <input type="file" id="import-input" style="display: none;" accept=".json,.txt">
             </div>
+
+            <!-- 突发事件触发按钮 -->
+            <button id="open-event-panel-btn" style="width:100%; margin-top:8px; padding:8px; background:rgba(255,60,60,0.15); color:#ff8888; border:1px solid rgba(255,60,60,0.4); border-radius:4px; cursor:pointer; font-weight:bold; font-family:inherit;">⚡ 突发事件 <span id="event-inject-badge" class="event-badge hidden">0</span></button>
             </div><!-- /.panel-body -->
         </aside>
 
@@ -271,6 +280,9 @@
                 <button class="drawer-tab-btn" data-drawer-tab="world">
                     <span>🌐 世界</span>
                 </button>
+                <button class="drawer-tab-btn" data-drawer-tab="settings">
+                    <span>⚙️ 设置</span>
+                </button>
             </div>
             <div class="drawer-content active" id="drawer-chars">
                 <!-- 角色编辑动态生成 -->
@@ -280,6 +292,9 @@
             </div>
             <div class="drawer-content hidden" id="drawer-world">
                 <!-- 世界观编辑动态生成 -->
+            </div>
+            <div class="drawer-content hidden" id="drawer-settings">
+                <!-- 设置动态生成 -->
             </div>
         </div>
     </div>
@@ -298,6 +313,34 @@
             </div>
             <div id="artwork-log-list" style="overflow-y:auto; padding:12px 18px; flex:1; display:flex; flex-direction:column; gap:10px;">
                 <!-- 动态生成 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 突发事件浮层 -->
+    <div id="event-inject-panel" style="display:none; position:fixed; top:0; right:0; width:320px; height:100%; z-index:1000; pointer-events:none;">
+        <div id="event-inject-inner" style="pointer-events:auto; position:absolute; right:0; top:50%; transform:translateY(-50%); width:100%; background:#1a1a1a; border-left:2px solid #ff4444; box-shadow:-5px 0 20px rgba(0,0,0,0.6); display:flex; flex-direction:column; max-height:90vh; border-radius:8px 0 0 8px; overflow:hidden;">
+            <div id="event-inject-header-bar" style="display:flex; align-items:center; gap:8px; padding:12px 14px; background:rgba(255,40,40,0.12); border-bottom:1px solid rgba(255,60,60,0.3); cursor:move; user-select:none;">
+                <span style="color:#ff6b6b; font-weight:bold; font-size:13px;">⚡ 突发事件</span>
+                <span style="font-size:10px; color:#888; flex:1;">下一轮生效</span>
+                <button id="event-panel-close-btn" style="background:none; border:none; color:#888; font-size:16px; cursor:pointer; padding:0; line-height:1; width:24px; height:24px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">✕</button>
+            </div>
+            <div style="padding:10px; display:flex; flex-direction:column; gap:8px; overflow-y:auto; flex:1;">
+                <div id="event-preset-btns" style="display:grid; grid-template-columns:1fr 1fr; gap:4px;">
+                    <button class="event-preset-btn" data-event="门铃响了，门外站着一个陌生人，说有紧急的事要找人">🔔 门铃</button>
+                    <button class="event-preset-btn" data-event="突然发生了轻微地震，房间里的物品有些晃动，所有人都感到震动">🌍 地震</button>
+                    <button class="event-preset-btn" data-event="电视里正在播放一条重要新闻，内容引起了大家的注意">📺 新闻</button>
+                    <button class="event-preset-btn" data-event="停电了，整个公寓陷入黑暗，只有窗外的路灯还亮着">💡 停电</button>
+                    <button class="event-preset-btn" data-event="外面突然下起了大雨，雨声噼啪打在窗玻璃上">🌧️ 暴雨</button>
+                    <button class="event-preset-btn" data-event="有人的手机收到了一条让人意外的消息，内容令人震惊">📱 消息</button>
+                </div>
+                <textarea id="event-inject-input" placeholder="用自然语言描述突发事件，例如：&#10;• 门铃响了，门外是快递员&#10;• 让三玖突然想起了某件重要的事&#10;• 强制让角色A完成某个行动&#10;• 电视里播放了一条关于...的新闻" rows="5"></textarea>
+                <div id="event-queue-display"></div>
+                <div class="event-inject-actions">
+                    <button id="event-inject-btn">加入队列</button>
+                    <button id="event-inject-now-btn" title="立即发送并触发下一轮">立即触发</button>
+                    <button id="event-clear-btn" title="清空所有待发事件">清空</button>
+                </div>
             </div>
         </div>
     </div>

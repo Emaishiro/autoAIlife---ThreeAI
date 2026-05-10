@@ -34,12 +34,13 @@ const GAME_CONFIG = {
     characters: [
         {
             id: "huiwu",  // 保留原ID以维持代码兼容性
-            name: "惠舞",
+            name: "零",
             color: "#00d4ff",
             gender: "male",
             age: 22,
-            personality: "榆木脑袋的顶尖学霸，非常认真负责，会主动找人聊天，空闲时看新闻",
+            personality: "榆木脑袋，非常认真负责，会主动找人聊天，空闲时看新闻",
             persona: "",
+            memories: [],
             career: "AI算法工程师",
             monthlyIncome: 15000,
             careerPrompt: "工作日上午9-12点和下午14-18点为明确工作时段。工作中应该展示专业和认真的态度。",
@@ -65,6 +66,7 @@ const GAME_CONFIG = {
             age: 21,
             personality: "沉默寡言，不擅长表达感情，内向但也不介意别人的好意，空闲时看电影，空闲时听歌",
             persona: "",
+            memories: [],
             career: "插画师",
             monthlyIncome: 8000,
             careerPrompt: "创意工作者，工作没有固定时段，主要通过作品输出来体现。",
@@ -90,6 +92,7 @@ const GAME_CONFIG = {
             age: 21,
             personality: "努力认真，不擅长撒谎，空闲时喜欢吃东西，有当老师的梦想，会主动找人聊天，爱分享趣事，空闲时看时尚杂志",
             persona: "",
+            memories: [],
             career: "美食博主",
             monthlyIncome: 10000,
             careerPrompt: "需要定期产出内容。通常会在厨房进行美食制作或拍摄。",
@@ -146,8 +149,8 @@ const GAME_CONFIG = {
         },
         {
             id: "bedroom1",
-            name: "惠舞的卧室",
-            description: "惠舞的卧室，整洁简单，书桌上堆满了专业书籍。",
+            name: "零的卧室",
+            description: "零的卧室，整洁简单，书桌上堆满了专业书籍。",
             items: ["单人床", "书桌", "衣柜", "台灯"],
             isBedroom: true,
             ownerCharId: "huiwu"
@@ -177,7 +180,7 @@ const GAME_CONFIG = {
 const GAME_PRESETS = {
     "default_threegirls": {
         id: "default_threegirls",
-        label: "默认：惠舞/晓雨/宁宁",
+        label: "默认：零/晓雨/宁宁",
         description: "三室一厅公寓，三位性格各异的室友",
         config: deepClone(GAME_CONFIG)
     },
@@ -245,6 +248,7 @@ function initGameStateFromConfig(config) {
             age: charConfig.age,
             personality: charConfig.personality,
             persona: charConfig.persona || '',
+            memories: deepClone(charConfig.memories || []),
             career: charConfig.career,
             monthlyIncome: charConfig.monthlyIncome,
             careerPrompt: charConfig.careerPrompt,
@@ -311,6 +315,8 @@ function initGameStateFromConfig(config) {
         loopCount: 0,
         dailyInteractions: [],
         recentEvents: [],  // 近几轮关键事件，供下轮 prompt 使用
+        lockRelationship: false, // 锁定角色好感度，跳过每日关系结算
+        pendingEvents: [], // 玩家注入的突发事件队列，下一轮生效后清空
         coupleStatus: {}   // 恋爱/婚姻状态 key:"charId1,charId2"(排序) value:{status,since}
     };
 }
@@ -630,7 +636,7 @@ function getRoomOccupants(roomId) {
 
 // 角色颜色映射
 const characterColors = {
-    '惠舞': 'huiwu',
+    '零': 'huiwu',
     '晓雨': 'sanjiu',
     '宁宁': 'wuyue'
 };
@@ -704,7 +710,7 @@ function addLog(message, type = 'info', characterName = null) {
     ui.gameLog.appendChild(entry);
 
     // 限制日志数量
-    if (ui.gameLog.children.length > 150) {
+    if (ui.gameLog.children.length > 200) {
         ui.gameLog.removeChild(ui.gameLog.firstChild);
     }
 
@@ -860,7 +866,7 @@ ${otherCharsInfo || '（无）'}
 // 静态备用池（无API Key或AI调用失败时使用）
 function generateRestActionFromPool(character, otherCharacters) {
     const restActions = {
-        '惠舞': [
+        '零': [
             {
                 thought: "脑子有些过载了，强行继续只会写出更烂的代码。玩个游戏让手指替代大脑，暂时放松一下。",
                 action: "靠在书房椅背上，打开平板上收藏的像素风格游戏，手指在屏幕上飞快移动，嘴里轻声嘟囔着攻略",
@@ -1198,13 +1204,24 @@ function cleanAndParseJSON(rawContent) {
             }
         }
 
-        // 兜底：从文本中提取第一个完整 JSON 对象（适用于 reasoner 前后带杂文的情况）
-        const start = cleaned.indexOf('{');
-        const end = cleaned.lastIndexOf('}');
-        if (start !== -1 && end > start) {
-            try {
-                return JSON.parse(cleaned.slice(start, end + 1));
-            } catch (e2) { /* 继续抛出原始错误 */ }
+        // 兜底：从文本中提取第一个含 actions/narrative 的完整 JSON 对象
+        {
+            let depth2 = 0, start2 = -1;
+            for (let i = 0; i < cleaned.length; i++) {
+                const c = cleaned[i];
+                if (c === '{') { if (depth2 === 0) start2 = i; depth2++; }
+                else if (c === '}') {
+                    depth2--;
+                    if (depth2 === 0 && start2 !== -1) {
+                        const block = cleaned.slice(start2, i + 1);
+                        try {
+                            const parsed = JSON.parse(block);
+                            if (parsed.actions || parsed.narrative) return parsed;
+                        } catch (_) {}
+                        start2 = -1;
+                    }
+                }
+            }
         }
 
         // 详细的错误日志
@@ -1241,6 +1258,149 @@ function updateApiKeyStatus() {
     }
 }
 
+function initAdvancedApiToggle() {
+    const toggle = document.getElementById('advanced-api-toggle');
+    const body = document.getElementById('advanced-api-body');
+    if (!toggle || !body) return;
+    toggle.addEventListener('click', () => {
+        const open = body.style.display !== 'none';
+        body.style.display = open ? 'none' : 'block';
+        toggle.textContent = open ? '▶ 高级：使用中转商地址' : '▼ 高级：使用中转商地址';
+    });
+}
+
+// ===== 突发事件注入面板 =====
+function initEventInjectPanel() {
+    const panel = document.getElementById('event-inject-panel');
+    const openBtn = document.getElementById('open-event-panel-btn');
+    const closeBtn = document.getElementById('event-panel-close-btn');
+    const input = document.getElementById('event-inject-input');
+    const badge = document.getElementById('event-inject-badge');
+    const queueDisplay = document.getElementById('event-queue-display');
+
+    function refreshQueue() {
+        const events = gameState.pendingEvents;
+        queueDisplay.innerHTML = '';
+        if (events.length === 0) {
+            badge.classList.add('hidden');
+            return;
+        }
+        badge.textContent = events.length;
+        badge.classList.remove('hidden');
+        events.forEach((evt, i) => {
+            const item = document.createElement('div');
+            item.className = 'event-queue-item';
+            item.innerHTML = `<span class="event-queue-item-text">${evt}</span><button class="event-queue-item-del" title="移除">✕</button>`;
+            item.querySelector('.event-queue-item-del').addEventListener('click', () => {
+                gameState.pendingEvents.splice(i, 1);
+                refreshQueue();
+            });
+            queueDisplay.appendChild(item);
+        });
+    }
+
+    function addEvent(text) {
+        text = text.trim();
+        if (!text) return;
+        gameState.pendingEvents.push(text);
+        input.value = '';
+        addLog(`⚡ 突发事件已加入队列：${text}`, 'system');
+        refreshQueue();
+    }
+
+    // 打开/关闭浮层
+    function openPanel() { panel.style.display = 'block'; input.focus(); }
+    function closePanel() { panel.style.display = 'none'; }
+
+    openBtn.addEventListener('click', openPanel);
+    closeBtn.addEventListener('click', closePanel);
+
+    // 拖拽移动
+    const inner = document.getElementById('event-inject-inner');
+    const dragHandle = document.getElementById('event-inject-header-bar');
+    let dragging = false, startX, startY, origLeft, origTop;
+
+    dragHandle.addEventListener('mousedown', e => {
+        if (e.target.closest('button')) return;
+        if (window.innerWidth < 640) return;
+        dragging = true;
+        const rect = inner.getBoundingClientRect();
+        startX = e.clientX;
+        startY = e.clientY;
+        origLeft = rect.left;
+        origTop = rect.top;
+        inner.style.width = rect.width + 'px';
+        inner.style.position = 'fixed';
+        inner.style.right = 'auto';
+        inner.style.top = origTop + 'px';
+        inner.style.left = origLeft + 'px';
+        inner.style.transform = 'none';
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', e => {
+        if (!dragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const newLeft = Math.max(0, Math.min(window.innerWidth - inner.offsetWidth, origLeft + dx));
+        const newTop = Math.max(0, Math.min(window.innerHeight - inner.offsetHeight, origTop + dy));
+        inner.style.left = newLeft + 'px';
+        inner.style.top = newTop + 'px';
+    });
+
+    document.addEventListener('mouseup', () => { dragging = false; });
+
+    // 加入队列
+    document.getElementById('event-inject-btn').addEventListener('click', () => {
+        addEvent(input.value);
+    });
+
+    // Ctrl+Enter 快速加入
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            addEvent(input.value);
+        }
+    });
+
+    // 立即触发：加入队列并强制推进下一轮
+    document.getElementById('event-inject-now-btn').addEventListener('click', () => {
+        const text = input.value.trim();
+        if (text) addEvent(text);
+        if (gameState.pendingEvents.length === 0) {
+            addLog('⚠️ 没有待触发的突发事件', 'warning');
+            return;
+        }
+        if (!gameState.isProcessing && !gameState.isPaused && gameState.loopTimeoutId) {
+            clearTimeout(gameState.loopTimeoutId);
+            gameState.loopTimeoutId = null;
+            addLog('⚡ 立即触发突发事件，开始下一轮...', 'system');
+            gameLoop();
+        } else if (gameState.isPaused) {
+            addLog('⚠️ 游戏已暂停，事件已加入队列，恢复后将在下一轮生效', 'warning');
+        } else if (gameState.isProcessing) {
+            addLog('⚡ 事件已加入队列，将在本轮完成后的下一轮生效', 'system');
+        } else {
+            addLog('⚠️ 游戏尚未开始，事件已加入队列', 'warning');
+        }
+    });
+
+    // 清空队列
+    document.getElementById('event-clear-btn').addEventListener('click', () => {
+        gameState.pendingEvents = [];
+        addLog('突发事件队列已清空', 'system');
+        refreshQueue();
+    });
+
+    // 快速预设按钮
+    document.querySelectorAll('.event-preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            input.value = btn.dataset.event;
+            input.focus();
+        });
+    });
+}
+
 function initModelToggle() {
     const v4Btn = document.getElementById('model-v4-btn');
     const v4ProBtn = document.getElementById('model-v4pro-btn');
@@ -1256,6 +1416,7 @@ function initModelToggle() {
 
     function setThinkingStyle(style, activeBtn) {
         API_CONFIG.THINKING_STYLE = style;
+        localStorage.setItem('api_thinking_style', style);
         allStyleBtns.forEach(b => b.classList.remove('active'));
         if (activeBtn) activeBtn.classList.add('active');
     }
@@ -1267,6 +1428,8 @@ function initModelToggle() {
     v4Btn.addEventListener('click', () => {
         API_CONFIG.MODEL = 'deepseek-v4-flash';
         API_CONFIG.THINKING = true;
+        localStorage.setItem('api_thinking_enabled', 'true');
+        localStorage.setItem('api_model', 'deepseek-v4-flash');
         allBtns.forEach(b => b.classList.remove('active'));
         v4Btn.classList.add('active');
         label.textContent = '新模型·思考模式';
@@ -1276,6 +1439,8 @@ function initModelToggle() {
         v4ProBtn.addEventListener('click', () => {
             API_CONFIG.MODEL = 'deepseek-v4-pro';
             API_CONFIG.THINKING = true;
+            localStorage.setItem('api_thinking_enabled', 'true');
+            localStorage.setItem('api_model', 'deepseek-v4-pro');
             allBtns.forEach(b => b.classList.remove('active'));
             v4ProBtn.classList.add('active');
             label.textContent = '旗舰模型·思考模式';
@@ -1330,9 +1495,35 @@ function extractDeepseekResponseContent(data) {
         return message.parsed;
     }
 
-    return normalizeApiTextContent(message.content)
+    // DeepSeek 思考模式下，thinking 内容在 reasoning_content，实际输出在 content
+    // 若两者都有，直接用 content（已经是纯输出部分）
+    const rawContent = normalizeApiTextContent(message.content)
         || normalizeApiTextContent(choice?.text)
         || normalizeApiTextContent(data?.output_text);
+
+    if (!rawContent) return null;
+
+    // 处理思考块和实际 JSON 粘连的情况：{...思考...}{...actions...}
+    // 找出所有顶层 JSON 对象，取第一个含 actions 或 narrative 字段的
+    const jsonBlocks = [];
+    let depth = 0, start = -1;
+    for (let i = 0; i < rawContent.length; i++) {
+        const c = rawContent[i];
+        if (c === '{') { if (depth === 0) start = i; depth++; }
+        else if (c === '}') {
+            depth--;
+            if (depth === 0 && start !== -1) {
+                jsonBlocks.push(rawContent.slice(start, i + 1));
+                start = -1;
+            }
+        }
+    }
+    if (jsonBlocks.length > 1) {
+        const actionBlock = jsonBlocks.find(b => b.includes('"actions"') || b.includes('"narrative"'));
+        if (actionBlock) return actionBlock;
+    }
+
+    return rawContent;
 }
 
 // 调用 DeepSeek API 的通用函数
@@ -1512,7 +1703,11 @@ function buildSystemPrompt() {
     // 构建角色列表（最多5个）
     let charDescriptions = '';
     chars.forEach((char, idx) => {
-        charDescriptions += `${idx + 1}. ${char.name}：${dynamicPersonalities[char.name]}\n`;
+        let desc = `${idx + 1}. ${char.name}：${dynamicPersonalities[char.name]}`;
+        if (char.memories && char.memories.length > 0) {
+            desc += `\n   📝记忆：${char.memories.map(m => m.tag).join(' | ')}`;
+        }
+        charDescriptions += desc + '\n';
     });
 
     // 构建职业规范
@@ -1609,6 +1804,7 @@ ${roomList}
 3. "time_passed": 游戏时间流逝分钟数
 4. "new_npcs": （可选）本轮行为中自然出现的新配角，数组，每项：{"name": "姓名或称呼", "role": "身份/职业", "note": "与角色的关系或特点"}。仅当确实出现了有意义的新面孔时填写，不要强行创造。
 5. "love_events": （可选）当本轮发生重要感情事件时填写，数组，每项：{"type": "confession（表白）|accepted（接受）|proposal（求婚）|married（结婚）|breakup（分手）|divorce（离婚）", "from": "角色名", "to": "角色名", "description": "一句话描述"}。规则：①好感值双方≥65时角色才可能表白；②双方≥82且已是恋人才可求婚；③表白/求婚是否成功由对方角色性格决定；④分手/离婚需一方明显心灰意冷；⑤不要强行创造，只在叙事中确实发生时填写。
+6. "memory_updates": （可选）仅在本轮发生值得记住的重要事件时才填写，数组，每项：{"charId": "角色英文ID", "memoryId": "事件唯一键（如book_西游记、romance_晓雨、conflict_宁宁）", "tag": "最多10字的记忆标签"}。规则：①适用事件：书/电影/游戏开始或完成、告白/被告白/分手、争吵/和好、重要决定或约定；②相同 memoryId 会覆盖旧记忆（如"西游记读一半"→"西游记读完"用同一个 memoryId: "book_西游记"）；③tag 严格不超过10字；④普通日常行为不填，只记录真正有剧情意义的事件。
 
 严格返回JSON，不含任何额外文字。`;
 
@@ -1702,7 +1898,7 @@ function mockAIResponse(prompt) {
                 mockResponse = {
                     actions: [
                         {
-                            character: "惠舞",
+                            character: "零",
                             thought: "闹钟响之前就醒了——脑子里那个昨晚没解决的bug还在转，像一根卡进齿轮的沙粒。越躺着越清醒，索性起来，用代码把它磨碎。",
                             action: "洗了把脸走进书房，在椅子上坐定，打开编译器，盯着昨晚留下的那行报错，食指缓缓敲击桌面，忽然停住，俯身开始打字",
                             result: "那个bug被找到了，藏在一个极不起眼的类型转换里；修完跑了一遍测试，绿灯亮起的瞬间，肩膀悄悄松了一口气",
@@ -1725,17 +1921,17 @@ function mockAIResponse(prompt) {
                         },
                         {
                             character: "宁宁",
-                            thought: "肚子比闹钟更准时。宁宁还没睁开眼，胃就已经在催了——先把自己喂饱，顺手多做一份，惠舞那个书呆子肯定又没想着吃东西。",
+                            thought: "肚子比闹钟更准时。宁宁还没睁开眼，胃就已经在催了——先把自己喂饱，顺手多做一份，零那个书呆子肯定又没想着吃东西。",
                             action: "在厨房打两个鸡蛋，切了几片吐司，一边煎蛋一边把面包片压进烤架，等待的间隙顺手洗了昨晚泡着的碗",
                             result: "端出两份早餐，一份放在书房门口，轻轻敲了两下门说'吃饭了'，没等回应就转身去吃自己的",
                             duration: 30,
                             stat_changes: { mood: 10, energy: 8, satiety: -5, hygiene: -2, wallet: 0 },
-                            interaction_with: "惠舞",
+                            interaction_with: "零",
                             new_room: "kitchen",
                             actionType: "daily_life"
                         }
                     ],
-                    narrative: "晨光还没完全铺展开，公寓就已经各自醒来了。惠舞与一个隐藏在代码深处的错误展开了安静的较量；晓雨用铅笔捕捉窗外那一角普通的街景；而宁宁的厨房里，黄油在锅里轻轻滋响，一份没有署名的早餐，悄悄出现在了书房的门口。",
+                    narrative: "晨光还没完全铺展开，公寓就已经各自醒来了。零与一个隐藏在代码深处的错误展开了安静的较量；晓雨用铅笔捕捉窗外那一角普通的街景；而宁宁的厨房里，黄油在锅里轻轻滋响，一份没有署名的早餐，悄悄出现在了书房的门口。",
                     time_passed: 60
                 };
             } else if (hour >= 9 && hour < 12) {
@@ -1743,7 +1939,7 @@ function mockAIResponse(prompt) {
                 mockResponse = {
                     actions: [
                         {
-                            character: "惠舞",
+                            character: "零",
                             thought: "昨晚的bug虽然搞定了，但今天的需求评审会已经在脑子里放映了一遍——新功能的架构思路需要梳理清楚，要不然下午的代码会写得很累。",
                             action: "坐在书房的椅子上，打开文档和代码，先梳理了新需求的逻辑流程，在纸上画了一张结构图，越画思路越清晰，手指在键盘上开始敲出框架代码",
                             result: "框架搭建完毕，剩下的就是填充业务逻辑，他对自己今天的进度满意得点了点头",
@@ -1776,7 +1972,7 @@ function mockAIResponse(prompt) {
                             actionType: "primary_work"
                         }
                     ],
-                    narrative: "上午的阳光透过窗户洒进公寓，三个人各自陷入深度工作的状态——惠舞的指尖在键盘上舞动，为虚拟世界搭建结构；晓雨的笔尖在画纸上游走，为角色赋予灵魂；宁宁对着屏幕喃喃自语，规划着下一个故事的叙述。公寓在这个上午显得安静而充满力量。",
+                    narrative: "上午的阳光透过窗户洒进公寓，三个人各自陷入深度工作的状态——零的指尖在键盘上舞动，为虚拟世界搭建结构；晓雨的笔尖在画纸上游走，为角色赋予灵魂；宁宁对着屏幕喃喃自语，规划着下一个故事的叙述。公寓在这个上午显得安静而充满力量。",
                     time_passed: 90
                 };
             } else if (hour >= 12 && hour < 14) {
@@ -1784,7 +1980,7 @@ function mockAIResponse(prompt) {
                 mockResponse = {
                     actions: [
                         {
-                            character: "惠舞",
+                            character: "零",
                             thought: "写了三个小时的代码，眼睛开始拒绝对焦。胃里传来更实际的抗议——泡面，快，不然下午的思路会更乱。",
                             action: "走进厨房，撕开一包泡面，烧水的间隙靠着冰箱盯着天花板发呆；面泡好后端回书房，一边吃一边盯着屏幕上的函数，筷子像是在空中悬着",
                             result: "面条吸溜到一半，突然想到了一个新的架构思路，赶紧腾出一只手在便利贴上飞速写下三行字，面条凉了也没察觉",
@@ -1817,7 +2013,7 @@ function mockAIResponse(prompt) {
                             actionType: "daily_life"
                         }
                     ],
-                    narrative: "午间的公寓被各自的事务切割成三个独立的小世界：惠舞在泡面的热气里捕捞着从代码缝隙里漏出的灵感；晓雨用靠垫盖住脸，在黑暗里等待新的画面自己浮现；而宁宁则在厨房的烟火气中短暂地停歇，为下午的工作补充能量。",
+                    narrative: "午间的公寓被各自的事务切割成三个独立的小世界：零在泡面的热气里捕捞着从代码缝隙里漏出的灵感；晓雨用靠垫盖住脸，在黑暗里等待新的画面自己浮现；而宁宁则在厨房的烟火气中短暂地停歇，为下午的工作补充能量。",
                     time_passed: 35
                 };
             } else if (hour >= 14 && hour < 17) {
@@ -1825,10 +2021,10 @@ function mockAIResponse(prompt) {
                 mockResponse = {
                     actions: [
                         {
-                            character: "惠舞",
+                            character: "零",
                             thought: "午休过后脑子清醒了不少，下午就该把上午设计的框架代码填满了。这个功能模块相对独立，今天能把它搞完的话，明天就能进入集成测试阶段。",
                             action: "回到书房坐下，打开上午的代码，逐行阅读自己的框架，脑子快速模拟一遍逻辑流程，然后开始细致地填充业务逻辑，手速飞快但每一个字符都是精确的",
-                            result: "下午四点，测试通过，这个模块的核心功能已经完整了，惠舞伸了个长懒腰，眼神里闪着满足感",
+                            result: "下午四点，测试通过，这个模块的核心功能已经完整了，零伸了个长懒腰，眼神里闪着满足感",
                             duration: 120,
                             stat_changes: { mood: 8, energy: -14, satiety: -12, hygiene: 0, wallet: 0 },
                             interaction_with: null,
@@ -1868,7 +2064,7 @@ function mockAIResponse(prompt) {
                             }
                         }
                     ],
-                    narrative: "下午的公寓洋溢着创意和代码的芬芳。惠舞的书房里，屏幕闪烁着调试的色彩；晓雨的卧室里，笔尖舞动着一个完整的世界；而宁宁的电脑屏幕上，素材像音符一样在timeline上排列成了一首视觉之歌。三个人各自沉浸在自己的工作中，却又在这个共同的下午里，用专注书写着各自的故事。",
+                    narrative: "下午的公寓洋溢着创意和代码的芬芳。零的书房里，屏幕闪烁着调试的色彩；晓雨的卧室里，笔尖舞动着一个完整的世界；而宁宁的电脑屏幕上，素材像音符一样在timeline上排列成了一首视觉之歌。三个人各自沉浸在自己的工作中，却又在这个共同的下午里，用专注书写着各自的故事。",
                     time_passed: 120
                 };
             } else if (hour >= 17 && hour < 20) {
@@ -1876,7 +2072,7 @@ function mockAIResponse(prompt) {
                 mockResponse = {
                     actions: [
                         {
-                            character: "惠舞",
+                            character: "零",
                             thought: "长时间对着屏幕，脑子已经有点懵了。站起来活动一下身体，晚餐时间也快到了。今天的工作量已经够了，下班的感觉终于来了。",
                             action: "从书房走出来，在客厅的沙发上坐下，随便翻着手机上的新闻，有一搭没一搭地看着，偶尔站起来伸个懒腰走到阳台看看外面",
                             result: "脑子逐渐从代码的世界里退出来，开始变得有些懒散，这是该放松的时候了",
@@ -1904,12 +2100,12 @@ function mockAIResponse(prompt) {
                             result: "饭菜差不多同时出锅，宁宁擦了擦手，轻声叫了两个室友来吃饭，自己也坐下来吃了一碗，虽然今天没专门给别人做什么特殊的，但这顿饭也饱含了她作为室友的用心",
                             duration: 60,
                             stat_changes: { mood: 6, energy: 2, satiety: -8, hygiene: -4, wallet: -15 },
-                            interaction_with: "惠舞、晓雨",
+                            interaction_with: "零、晓雨",
                             new_room: "kitchen",
                             actionType: "daily_life"
                         }
                     ],
-                    narrative: "傍晚降临，公寓从紧张的工作节奏渐渐放松下来。惠舞卸下了代码工程师的角色，恢复成一个需要休息的普通人；晓雨把画笔搁置在一边，让自己在电影的陪伴下静静地发呆；而宁宁则自然地转换到家务的角色，厨房里的热汤和家常菜的香气，宣告了这一天工作的落幕。三个人围坐在一起，享受着彼此陪伴的傍晚。",
+                    narrative: "傍晚降临，公寓从紧张的工作节奏渐渐放松下来。零卸下了代码工程师的角色，恢复成一个需要休息的普通人；晓雨把画笔搁置在一边，让自己在电影的陪伴下静静地发呆；而宁宁则自然地转换到家务的角色，厨房里的热汤和家常菜的香气，宣告了这一天工作的落幕。三个人围坐在一起，享受着彼此陪伴的傍晚。",
                     time_passed: 60
                 };
             } else if (hour >= 20 || hour < 5) {
@@ -1917,7 +2113,7 @@ function mockAIResponse(prompt) {
                 mockResponse = {
                     actions: [
                         {
-                            character: "惠舞",
+                            character: "零",
                             thought: "夜晚了，继续工作也不是个办法，眼睛已经开始抗议。洗个澡清醒一下，然后早点睡，明天的冲刺还要靠充足的睡眠保障。",
                             action: "进浴室洗了个热水澡，热水冲在身体上，所有的疲惫都随着水流往下淌。洗完擦干身体后，穿上睡衣，靠在床上用手机看了会儿代码论坛，越看越困",
                             result: "手机掉在了身边，眼睛已经睁不开，一天的工作圆满地以睡眠收尾",
@@ -1969,7 +2165,7 @@ function mockAIResponse(prompt) {
                     actions: actions.length === 3 ? actions : [
                         // 备用方案，如果动态生成失败
                         {
-                            character: "惠舞",
+                            character: "零",
                             thought: "脑子有些过载了，强行继续只会写出更烂的代码。去厨房泡杯咖啡，用咖啡因给脑子充充电。",
                             action: "走出书房，在厨房用速溶咖啡冲了一杯热水，靠着水槽端着杯子，每一口都喝得很慢",
                             result: "咖啡喝完，脑子清醒了不少，他感觉整个人又活过来了",
@@ -2527,6 +2723,9 @@ async function gameLoop() {
     // 生成丰富的时间信息
     const timeInfo = generateTimeInfo(gameState.currentTime, gameState.dayCount);
 
+    // 快照本轮要发送的事件，AI 等待期间新加入的事件保留到下一轮
+    const sentEvents = [...gameState.pendingEvents];
+
     const actionPrompt = `当前游戏时间：${timeInfo.fullInfo}
 ${holidayInfoText}
 
@@ -2597,7 +2796,11 @@ ${gameState.recentEvents.length > 0 ? `
 14. 近期事件记忆（严格基于此保持上下文连贯，不得重复已发生的对话内容）：
 ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.length - 1 ? '上' : '上上'}轮】\n${e}`).join('\n')}
 ` : ''}
-
+${sentEvents.length > 0 ? `
+⚡ 【突发事件 - 最高优先级，本轮必须真实发生并完整体现在所有角色行为和场景叙述中】：
+${sentEvents.map((e, i) => `${i + 1}. ${e}`).join('\n')}
+以上突发事件已实际发生，角色必须对其作出真实反应，不可忽略或绕过。
+` : ''}
 请确保行为自然、符合角色性格，并考虑真实的生活逻辑。
 特别注意：如果是节假日，角色可能会有特殊的活动安排，比如：
 - 周末：可能会睡懒觉、放松、外出购物或娱乐
@@ -2623,6 +2826,11 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
     updateCharactersMood();
 
     const decision = await callAI(actionPrompt);
+
+    // 只清除本轮已发送的事件，等待期间新加入的保留到下一轮
+    if (sentEvents.length > 0) {
+        gameState.pendingEvents = gameState.pendingEvents.filter(e => !sentEvents.includes(e));
+    }
 
     if (!decision || !Array.isArray(decision.actions)) {
         addLog('⚠️ AI 调用失败或返回无效响应，本轮已跳过', 'error');
@@ -2970,6 +3178,36 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
             processLoveEvents(decision.love_events);
         }
 
+        // 处理记忆体更新
+        if (Array.isArray(decision.memory_updates) && decision.memory_updates.length > 0) {
+            for (const update of decision.memory_updates) {
+                if (!update.charId || !update.memoryId || !update.tag) continue;
+                const char = gameState.characters[update.charId];
+                if (!char) continue;
+                if (!char.memories) char.memories = [];
+                const tag = String(update.tag).slice(0, 12);
+                const existingIdx = char.memories.findIndex(m => m.id === update.memoryId);
+                if (existingIdx !== -1) {
+                    char.memories[existingIdx].tag = tag;
+                } else {
+                    char.memories.push({ id: update.memoryId, tag });
+                    if (char.memories.length > 15) char.memories.shift();
+                }
+                // 同步到 activeConfig
+                const configChar = activeConfig?.characters?.find(c => c.id === update.charId);
+                if (configChar) {
+                    if (!configChar.memories) configChar.memories = [];
+                    const cfgIdx = configChar.memories.findIndex(m => m.id === update.memoryId);
+                    if (cfgIdx !== -1) configChar.memories[cfgIdx].tag = tag;
+                    else {
+                        configChar.memories.push({ id: update.memoryId, tag });
+                        if (configChar.memories.length > 15) configChar.memories.shift();
+                    }
+                }
+                addLog(`💭 ${char.name}：${tag}`, 'system');
+            }
+        }
+
         // 将本轮关键事件存入 recentEvents，供下轮 prompt 使用（保留最近2轮）
         const roundSummary = decision.actions.map(a => {
             let s = `${a.character}：${(a.action || '').slice(0, 60)}`;
@@ -2979,7 +3217,7 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
             return s;
         }).join('\n');
         gameState.recentEvents.push(roundSummary);
-        if (gameState.recentEvents.length > 2) gameState.recentEvents.shift();
+        if (gameState.recentEvents.length > 6) gameState.recentEvents.shift();
 
         // 更新时间
         let dayChanged = false;
@@ -3006,7 +3244,11 @@ ${gameState.recentEvents.map((e, i) => `【第${i === gameState.recentEvents.len
 
         // 新一天开始前：夜晚关系结算
         if (dayChanged) {
-            await doNightlyRelationshipReview();
+            if (gameState.lockRelationship) {
+                addLog('🔒 角色好感度已锁定，跳过今日关系结算', 'system');
+            } else {
+                await doNightlyRelationshipReview();
+            }
         }
 
         // 检查是否需要支付工资（每月1号）
@@ -3504,6 +3746,7 @@ function tryLoadAutoSaveOnStartup() {
             if (!char.careerPrompt) char.careerPrompt = configChar?.careerPrompt || '';
             if (!char.personality)  char.personality  = configChar?.personality  || '';
             if (char.persona === undefined) char.persona = configChar?.persona   || '';
+            if (!char.memories)     char.memories     = deepClone(configChar?.memories || []);
             if (!char.career)       char.career       = configChar?.career       || '';
             if (!char.color)        char.color        = configChar?.color        || '#ff00ff';
             if (char.status === undefined) char.status = 'awake';
@@ -3587,6 +3830,7 @@ function loadGame(slotIndex) {
             if (!char.careerPrompt) char.careerPrompt = configChar?.careerPrompt || '';
             if (!char.personality)  char.personality  = configChar?.personality  || '';
             if (char.persona === undefined) char.persona = configChar?.persona   || '';
+            if (!char.memories)     char.memories     = deepClone(configChar?.memories || []);
             if (!char.career)       char.career       = configChar?.career       || '';
             if (!char.color)        char.color        = configChar?.color        || '#ff00ff';
             if (char.status === undefined) {
@@ -3927,6 +4171,19 @@ function initSetupPanel() {
         const input = document.getElementById('setup-api-key');
         if (input) input.value = saved;
     }
+    const savedEndpoint = localStorage.getItem('deepseek_api_endpoint');
+    if (savedEndpoint) {
+        const endpointInput = document.getElementById('setup-api-endpoint');
+        if (endpointInput) {
+            endpointInput.value = savedEndpoint;
+            // 有已保存的自定义地址时自动展开
+            const body = document.getElementById('advanced-api-body');
+            const toggle = document.getElementById('advanced-api-toggle');
+            if (body) body.style.display = 'block';
+            if (toggle) toggle.textContent = '▼ 高级：使用中转商地址';
+        }
+    }
+    initAdvancedApiToggle();
 }
 
 // 标签页导航
@@ -4415,6 +4672,23 @@ function renderCharacterEditor() {
                 ${charCounterHtml(char.persona, 500, `cc-s-${idx}-persona`)}
             </div>
             <div class="editor-field-group">
+                <div class="editor-field-label">🧩 初始记忆体（${(char.memories || []).length}/15）——游戏开始时角色已有的记忆</div>
+                <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;min-height:22px;">
+                    ${(char.memories || []).length === 0
+                        ? '<span style="color:#555;font-size:11px;">（暂无）</span>'
+                        : (char.memories || []).map(m =>
+                            `<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.3);color:#00d4ff;border-radius:3px;padding:2px 6px;font-size:11px;">
+                                ${m.tag}
+                                <span onclick="removeSetupCharMemory(${idx},'${m.id}')" style="cursor:pointer;color:#ff5555;font-size:10px;line-height:1;">✕</span>
+                            </span>`
+                        ).join('')
+                    }
+                </div>
+                <input type="text" maxlength="12" placeholder="输入记忆标签（≤10字），按Enter添加"
+                       onkeypress="if(event.key==='Enter'&&this.value.trim()){addSetupCharMemory(${idx},this.value.trim());this.value='';}"
+                       style="width:100%;font-size:11px;" />
+            </div>
+            <div class="editor-field-group">
                 <div class="editor-field-label">工作提示（AI 行为规则）</div>
                 <textarea oninput="updateCharField(${idx}, 'careerPrompt', this.value); updateCharCounter('cc-s-${idx}-career', this.value, 200)" style="height: 70px;" placeholder="例如：工作日上午9-12点为明确工作时段...">${char.careerPrompt || ''}</textarea>
                 ${charCounterHtml(char.careerPrompt, 200, `cc-s-${idx}-career`)}
@@ -4529,6 +4803,7 @@ function addCharacter() {
         age: 20,
         personality: '新角色',
         persona: '',
+        memories: [],
         career: '职业',
         monthlyIncome: 10000,
         careerPrompt: '工作提示',
@@ -5535,6 +5810,17 @@ function startGameFromSetup() {
     gameState.apiKey = apiKeyInput.value.trim();
     if (gameState.apiKey) localStorage.setItem('deepseek_api_key', gameState.apiKey);
 
+    // 读取自定义 endpoint（中转商地址）
+    const endpointInput = document.getElementById('setup-api-endpoint');
+    const customEndpoint = endpointInput ? endpointInput.value.trim() : '';
+    if (customEndpoint) {
+        API_CONFIG.ENDPOINT = customEndpoint;
+        localStorage.setItem('deepseek_api_endpoint', customEndpoint);
+    } else {
+        API_CONFIG.ENDPOINT = 'https://api.deepseek.com/chat/completions';
+        localStorage.removeItem('deepseek_api_endpoint');
+    }
+
     // 同步API Key到右侧面板的输入框
     ui.apiKeyInput.value = gameState.apiKey;
     updateApiKeyStatus();
@@ -5609,6 +5895,8 @@ function initEditDrawer() {
                 renderDrawerRooms();
             } else if (tabName === 'world') {
                 renderDrawerWorld();
+            } else if (tabName === 'settings') {
+                renderDrawerSettings();
             }
         });
     });
@@ -5723,6 +6011,23 @@ function renderDrawerCharacters() {
                 ${charCounterHtml(char.careerPrompt, 200, `cc-d-${charId}-career`)}
             </div>
             <div class="drawer-field">
+                <div class="drawer-field-label">🧩 记忆体 (${(char.memories || []).length}/15)</div>
+                <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;min-height:22px;">
+                    ${(char.memories || []).length === 0
+                        ? '<span style="color:#555;font-size:11px;">（暂无记忆）</span>'
+                        : (char.memories || []).map(m =>
+                            `<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.3);color:#00d4ff;border-radius:3px;padding:2px 6px;font-size:11px;">
+                                ${m.tag}
+                                <span onclick="removeCharMemory('${charId}','${m.id}')" style="cursor:pointer;color:#ff5555;font-size:10px;line-height:1;">✕</span>
+                            </span>`
+                        ).join('')
+                    }
+                </div>
+                <input type="text" maxlength="12" placeholder="输入记忆标签（≤10字），按Enter添加"
+                       onkeypress="if(event.key==='Enter'&&this.value.trim()){addCharMemory('${charId}',this.value.trim());this.value='';}"
+                       style="width:100%;font-size:11px;" />
+            </div>
+            <div class="drawer-field">
                 <div class="drawer-field-label">📚 技能</div>
                 ${skillsHtml}
                 <input type="text" placeholder="输入新技能，按Enter添加" class="skills-input"
@@ -5775,11 +6080,62 @@ function updateDrawerCharField(charId, field, value) {
         if (configChar) configChar[field] = value;
 
         // 文本输入字段不重渲染，避免打断 IME 输入和频繁 DOM 重建
-        const textFields = ['personality', 'careerPrompt', 'career'];
+        const textFields = ['personality', 'persona', 'careerPrompt', 'career'];
         if (!textFields.includes(field)) {
             renderDrawerCharacters();
         }
     }
+}
+
+// 游戏中抽屉：新增记忆体
+function addCharMemory(charId, tag) {
+    tag = String(tag).trim().slice(0, 12);
+    if (!tag) return;
+    const char = gameState.characters[charId];
+    if (!char) return;
+    if (!char.memories) char.memories = [];
+    const memoryId = `manual_${Date.now()}`;
+    char.memories.push({ id: memoryId, tag });
+    if (char.memories.length > 15) char.memories.shift();
+    const configChar = activeConfig?.characters?.find(c => c.id === charId);
+    if (configChar) {
+        if (!configChar.memories) configChar.memories = [];
+        configChar.memories.push({ id: memoryId, tag });
+        if (configChar.memories.length > 15) configChar.memories.shift();
+    }
+    renderDrawerCharacters();
+}
+
+// 游戏中抽屉：删除记忆体
+function removeCharMemory(charId, memoryId) {
+    const char = gameState.characters[charId];
+    if (!char || !char.memories) return;
+    char.memories = char.memories.filter(m => m.id !== memoryId);
+    const configChar = activeConfig?.characters?.find(c => c.id === charId);
+    if (configChar && configChar.memories) {
+        configChar.memories = configChar.memories.filter(m => m.id !== memoryId);
+    }
+    renderDrawerCharacters();
+}
+
+// 设置面板：新增记忆体
+function addSetupCharMemory(idx, tag) {
+    tag = String(tag).trim().slice(0, 12);
+    if (!tag) return;
+    const char = setupPanelState.currentConfig.characters[idx];
+    if (!char) return;
+    if (!char.memories) char.memories = [];
+    char.memories.push({ id: `manual_${Date.now()}`, tag });
+    if (char.memories.length > 15) char.memories.shift();
+    renderCharacterEditor();
+}
+
+// 设置面板：删除记忆体
+function removeSetupCharMemory(idx, memoryId) {
+    const char = setupPanelState.currentConfig.characters[idx];
+    if (!char || !char.memories) return;
+    char.memories = char.memories.filter(m => m.id !== memoryId);
+    renderCharacterEditor();
 }
 
 // ===== 统一的颜色管理系统 =====
@@ -5959,18 +6315,6 @@ function renderDrawerWorld() {
             <div id="drawer-npc-list"></div>
             <button onclick="addDrawerNPC()" style="margin-top: 6px; padding: 5px 12px; background: #1a3a1a; color: #00ff41; border: 1px solid #00ff41; border-radius: 4px; cursor: pointer; font-size: 11px;">+ 添加配角</button>
 
-            <div style="color: #aaa; font-size: 12px; margin: 18px 0 8px; border-top: 1px solid #222; padding-top: 14px;">日志字体大小</div>
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <input
-                    type="range"
-                    id="drawer-log-fontsize"
-                    min="10" max="22" step="1"
-                    style="flex: 1; accent-color: #00ff41;"
-                    oninput="applyLogFontSize(this.value); document.getElementById('drawer-log-fontsize-val').textContent = this.value + 'px';"
-                />
-                <span id="drawer-log-fontsize-val" style="color: #00ff41; font-size: 12px; min-width: 32px; text-align: right;"></span>
-            </div>
-
             <button
                 onclick="applyDrawerWorldSetting()"
                 style="margin-top: 14px; width: 100%; padding: 9px; background: #00a060; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;"
@@ -5980,10 +6324,58 @@ function renderDrawerWorld() {
     document.getElementById('drawer-scene-name').value = sceneName;
     document.getElementById('drawer-world-setting').value = worldSetting;
     document.getElementById('drawer-start-time').value = currentTime;
-    const savedSize = parseInt(localStorage.getItem('log_font_size') || '14');
-    const slider = document.getElementById('drawer-log-fontsize');
-    if (slider) { slider.value = savedSize; document.getElementById('drawer-log-fontsize-val').textContent = savedSize + 'px'; }
     renderDrawerNPCList();
+}
+
+function renderDrawerSettings() {
+    const container = document.getElementById('drawer-settings');
+    const savedSize = parseInt(localStorage.getItem('log_font_size') || '14');
+    const locked = gameState.lockRelationship;
+    container.innerHTML = `
+        <div style="padding: 12px; display: flex; flex-direction: column; gap: 18px;">
+            <div>
+                <div style="color: #aaa; font-size: 12px; margin-bottom: 8px;">日志字体大小</div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <input
+                        type="range"
+                        id="drawer-log-fontsize"
+                        min="10" max="22" step="1"
+                        value="${savedSize}"
+                        style="flex: 1; accent-color: #00ff41;"
+                        oninput="applyLogFontSize(this.value); document.getElementById('drawer-log-fontsize-val').textContent = this.value + 'px';"
+                    />
+                    <span id="drawer-log-fontsize-val" style="color: #00ff41; font-size: 12px; min-width: 32px; text-align: right;">${savedSize}px</span>
+                </div>
+            </div>
+            <div style="border-top: 1px solid #222; padding-top: 14px;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                        <div style="color: #e0e0e0; font-size: 13px;">🔒 锁定角色好感度</div>
+                        <div style="color: #666; font-size: 11px; margin-top: 3px;">开启后跳过每日关系结算，好感度不再自动变化</div>
+                    </div>
+                    <label style="position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0;">
+                        <input type="checkbox" id="lock-relationship-toggle" ${locked ? 'checked' : ''}
+                            style="opacity: 0; width: 0; height: 0;"
+                            onchange="gameState.lockRelationship = this.checked; localStorage.setItem('lock_relationship', this.checked); addLog(this.checked ? '🔒 角色好感度已锁定' : '🔓 角色好感度已解锁', 'system');"
+                        />
+                        <span style="
+                            position: absolute; cursor: pointer; inset: 0;
+                            background: ${locked ? '#00a060' : '#333'};
+                            border-radius: 22px; transition: background 0.2s;
+                            display: flex; align-items: center;
+                            padding: 0 3px;
+                            justify-content: ${locked ? 'flex-end' : 'flex-start'};
+                        ">
+                            <span style="width: 16px; height: 16px; background: #fff; border-radius: 50%; display: block;"></span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    `;
+    // 让 toggle 外观随状态变化
+    const cb = document.getElementById('lock-relationship-toggle');
+    cb.addEventListener('change', () => renderDrawerSettings());
 }
 
 function renderDrawerNPCList() {
@@ -6342,9 +6734,56 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('artwork-log-modal').addEventListener('click', e => {
         if (e.target === e.currentTarget) closeArtworkLogModal();
     });
+    initEventInjectPanel();
     initModelToggle();
     initPanelCollapseButtons();
     applyLogFontSize(localStorage.getItem('log_font_size') || '14');
+
+    // 恢复锁定好感度设置
+    const savedLockRelationship = localStorage.getItem('lock_relationship');
+    if (savedLockRelationship === 'true') {
+        gameState.lockRelationship = true;
+    }
+
+    // 恢复 API 思维链设置
+    const savedThinking = localStorage.getItem('api_thinking_enabled');
+    const savedModel = localStorage.getItem('api_model');
+    const savedThinkingStyle = localStorage.getItem('api_thinking_style');
+
+    if (savedThinking === 'true') {
+        API_CONFIG.THINKING = true;
+    }
+    if (savedModel) {
+        API_CONFIG.MODEL = savedModel;
+        // 更新按钮状态
+        const v4Btn = document.getElementById('model-v4-btn');
+        const v4ProBtn = document.getElementById('model-v4pro-btn');
+        const label = document.getElementById('model-label');
+        if (savedModel === 'deepseek-v4-flash' && v4Btn) {
+            v4Btn.classList.add('active');
+            if (v4ProBtn) v4ProBtn.classList.remove('active');
+            if (label) label.textContent = '新模型·思考模式';
+        } else if (savedModel === 'deepseek-v4-pro' && v4ProBtn) {
+            v4ProBtn.classList.add('active');
+            if (v4Btn) v4Btn.classList.remove('active');
+            if (label) label.textContent = '旗舰模型·思考模式';
+        }
+    }
+    if (savedThinkingStyle) {
+        API_CONFIG.THINKING_STYLE = savedThinkingStyle;
+        // 更新思维风格按钮状态
+        const defaultBtn = document.getElementById('thinking-default-btn');
+        const innerBtn = document.getElementById('thinking-inner-btn');
+        const analysisBtn = document.getElementById('thinking-analysis-btn');
+        [defaultBtn, innerBtn, analysisBtn].forEach(btn => btn && btn.classList.remove('active'));
+        if (savedThinkingStyle === 'default' && defaultBtn) {
+            defaultBtn.classList.add('active');
+        } else if (savedThinkingStyle === 'inner_os' && innerBtn) {
+            innerBtn.classList.add('active');
+        } else if (savedThinkingStyle === 'no_inner_os' && analysisBtn) {
+            analysisBtn.classList.add('active');
+        }
+    }
 
     // 尝试加载自动存档
     const autoSaveLoaded = tryLoadAutoSaveOnStartup();

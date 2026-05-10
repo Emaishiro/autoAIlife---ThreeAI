@@ -5,7 +5,7 @@
 ## 功能特点
 
 - **自定义角色**：支持 1-5 个角色，可自定义名字、颜色、性格、职业、技能等属性
-- **动态 AI 对话**：接入 DeepSeek API，角色根据性格和场景动态生成回复
+- **动态 AI 对话**：接入 DeepSeek / Claude 等 AI API，角色根据性格和场景动态生成回复
 - **生活模拟**：时间流逝、日常行为、角色关系度系统
 - **存档管理**：3 个本地存档槽位，支持导入导出
 - **配置编辑器**：游戏内实时编辑角色和房间配置
@@ -23,4 +23,8 @@
 
 ## 开源协议
 
-本项目采用 [MIT License](LICENSE) 开源。
+本项目采用 [MIT License](LICENSE) 开源，作者 [Emaishiro](https://github.com/Emaishiro/autoAIlife---ThreeAI)。
+
+二次开发、修改或基于本项目的衍生作品，须在显著位置注明原作者及原项目链接：
+
+> 基于 [Emaishiro/ThreeAI](https://github.com/Emaishiro/autoAIlife---ThreeAI) 二次开发
