@@ -1772,7 +1772,7 @@ ${roomList}
 - "thought"：用第三人称写角色内心世界，要有具体的感官细节、情绪温度和性格逻辑，不得写成"他想去做某事"的简单陈述。要有画面感，有潜台词，可以有联想、回忆、矛盾感。
 - "action"：描写行为的全过程和细节，包括肢体动作、神态、环境感受、物件触感，如同电影镜头，而非流水账。可以包含短促的心理插入，让行为更有层次。
 - "result"：要有余韵，不只是陈述结果，要带出一点情绪或感受，甚至留下悬念或微小的转变。
-- "narrative"：用散文笔法串联${actionCountText}人，要有意象、有节奏、有空间感，像一段精炼的小说场景描写，让读者感受到同一时间轴上不同角色的呼吸。
+- "narrative"：用散文笔法描绘本轮行为【开始前】的状态定格，要有意象、有节奏、有空间感，像一段精炼的小说场景描写，让读者感受到同一时间轴上不同角色的呼吸。⚠️ 严禁将本轮 action/result 的内容写入 narrative，narrative 必须是行为发生前的场景快照，不得包含本轮行为的过程或结果。
 
 【反例——禁止这样写】
 思考："精力低了，应该去厨房吃东西补充能量。"
@@ -1794,9 +1794,9 @@ ${roomList}
    - "dialogue": 角色间的实际对话，数组，2-20句，严格符合各自性格，来回自然流动，对话要有情绪起伏，格式：[{"speaker": "角色名", "line": "对话内容"}, ...]。**重要：若本轮 A 的 interaction_with 指向 B，且 B 的 interaction_with 也指向 A（双方互相描述同一场互动），则只由角色列表中排名靠前的一方填写完整 dialogue，另一方设 null，避免同一段对话出现两次。若某方是主动发起一段独立的、对方行为中未涉及的话题，则可正常填写 dialogue。**
    - "new_room": 目标房间英文ID
    - "actionType": 行为类型（primary_work|secondary_work|daily_life|leisure|rest|social）
-   - "workOutput": （可选）创作成果。**触发规则：只要角色在本次行为中完成了任何视觉创作——包括完成一幅插画/绘画、拍摄完成一张或一组照片、完成一条视频的拍摄或剪辑——就必须填写此字段，不得省略。** 结构：{ "title": "作品名或这组照片/视频的主题", "type": "illustration（绘画/插画）|food_photo（食物/生活摄影照片）|video（视频）", "description": "30字内描述作品内容本身" }
+   - "workOutput": （可选）创作成果。**触发规则：仅当角色在本次行为中将某件视觉作品画完/拍完/剪完，即该作品在本轮 result 中达到明确的完成状态，才填写此字段。** 结构：{ "title": "作品名或这组照片/视频的主题", "type": "illustration（绘画/插画）|food_photo（食物/生活摄影照片）|video（视频）", "description": "30字内描述作品画面内容本身" }。⚠️ 禁止触发情况：①result 中出现"小半幅""在进行""还差""继续画""画了一部分"等未完成表述时，禁止填写；②同一幅持续创作的作品，只在最终完稿那一轮填写一次，中间过程轮次不填；③代码、程序、文字报告等非视觉产物禁止填写
    - "skill_changes": （可选）技能变化，结构：{ "learn": ["新技能"], "forget": ["失去的技能"] }。规则：①角色状态栏"已掌握技能"列出了现有技能，禁止在 learn 中重复添加已有的或与之高度相似的技能（名称包含关系或含义重叠均视为重复）；②每位角色最多保留15条技能，若已接近上限，添加新技能前请同时在 forget 中删除一条最不相关的旧技能；③技能名称要精炼（4-10字），避免冗长描述
-   - "purchases": （可选）购买物品，结构：[{"item": "物品名称", "dest": "inventory 或 房间英文ID", "cost": 价格数字, "quantity": 数量（可选，默认1）}]。规则：①仅当角色确实去购物或网购时才填写；②cost 必须从 wallet 中扣除（stat_changes.wallet 不需要再重复扣）；③余额不足时不得购买；④物品要符合角色性格、职业和用途；⑤价格参考：日用品5-50，食材10-100，家居小物件50-500，电子产品500-5000，家具200-3000；⑥随身携带小物件（食材、外带食物、书籍、小礼物等）dest填"inventory"，家具/家电等固定物件填房间ID；⑦外卖/拼单等捆绑包必须拆分为独立物品（如外卖三份写成三明治×2、饮料×1等分别条目），不得写成一整条捆绑名称
+   - "purchases": （可选）购买物品，结构：[{"item": "物品名称", "dest": "inventory 或 房间英文ID", "cost": 价格数字, "quantity": 数量（可选，默认1）}]。规则：①仅当角色在本轮行为中【主动发起】购物或网购时才填写，禁止因上一轮 currentAction 描述中提及购物就重复填写；②若角色背包（inventory）中已有同名或同类物品（如已有酸汤鱼片粉），说明上一轮已购买，本轮禁止重复购买；③cost 必须从 wallet 中扣除（stat_changes.wallet 不需要再重复扣）；④余额不足时不得购买；⑤物品要符合角色性格、职业和用途；⑥价格参考：日用品5-50，食材10-100，家居小物件50-500，电子产品500-5000，家具200-3000；⑦随身携带小物件（食材、外带食物、书籍、小礼物等）dest填"inventory"，家具/家电等固定物件填房间ID；⑧外卖/拼单等捆绑包必须拆分为独立物品（如外卖三份写成三明治×2、饮料×1等分别条目），不得写成一整条捆绑名称
    - "consume_items": （可选）本次行为中实际用尽或消耗掉的物品，结构：[{"item": "物品名称", "from": "inventory（背包）或 房间英文ID", "quantity": 数量（可选，默认1）}]。规则：①仅填写真正被用完的消耗品，如食材、零食、饮料、面膜、卫生纸等；②家具、家电、工具等耐用品不填；③物品必须确实存在于对应位置；④from填"inventory"表示消耗角色背包里的物品，填房间ID表示消耗房间里的物品；⑤有quantity字段时可消耗多份（如吃掉2个包子填quantity:2），背包里剩余份数会相应减少；⑥quantity不得超过背包实际持有数量
    - "item_actions": （可选）物品互动，结构：[{"type": "pick_up|put_down|give", "item": "物品名称", "quantity": 数量（可选，默认1）, "from_room": "房间ID（pick_up时填）", "to_room": "房间ID（put_down时填，留空则用当前房间）", "to_char": "角色名（give时填）"}]。规则：①pick_up从房间拾取物品入背包；②put_down将背包物品放到房间；③give将背包物品赠给同房间角色；④物品必须确实存在于对应位置；⑤give时quantity可大于1（如送2个饼干）
 
@@ -1804,7 +1804,7 @@ ${roomList}
 3. "time_passed": 游戏时间流逝分钟数
 4. "new_npcs": （可选）本轮行为中自然出现的新配角，数组，每项：{"name": "姓名或称呼", "role": "身份/职业", "note": "与角色的关系或特点"}。仅当确实出现了有意义的新面孔时填写，不要强行创造。
 5. "love_events": （可选）当本轮发生重要感情事件时填写，数组，每项：{"type": "confession（表白）|accepted（接受）|proposal（求婚）|married（结婚）|breakup（分手）|divorce（离婚）", "from": "角色名", "to": "角色名", "description": "一句话描述"}。规则：①好感值双方≥65时角色才可能表白；②双方≥82且已是恋人才可求婚；③表白/求婚是否成功由对方角色性格决定；④分手/离婚需一方明显心灰意冷；⑤不要强行创造，只在叙事中确实发生时填写。
-6. "memory_updates": （可选）仅在本轮发生值得记住的重要事件时才填写，数组，每项：{"charId": "角色英文ID", "memoryId": "事件唯一键（如book_西游记、romance_晓雨、conflict_宁宁）", "tag": "最多10字的记忆标签"}。规则：①适用事件：书/电影/游戏开始或完成、告白/被告白/分手、争吵/和好、重要决定或约定；②相同 memoryId 会覆盖旧记忆（如"西游记读一半"→"西游记读完"用同一个 memoryId: "book_西游记"）；③tag 严格不超过10字；④普通日常行为不填，只记录真正有剧情意义的事件。
+6. "memory_updates": （可选）仅在本轮发生值得记住的重要事件时才填写，数组，每项：{"charId": "角色英文ID", "memoryId": "事件唯一键（如book_西游记、romance_晓雨、conflict_宁宁）", "tag": "最多10字的记忆标签"}。规则：①适用事件：书/电影/游戏开始或完成、告白/被告白/分手、争吵/和好、重要决定或约定、首次发生的重要情感节点；②相同 memoryId 会覆盖旧记忆（如"西游记读一半"→"西游记读完"用同一个 memoryId: "book_西游记"）；③tag 严格不超过10字；④以下日常行为【绝对禁止】填写 memory_updates：做饭/吃饭/点外卖、做饮品/零食、睡觉/休息、普通工作/学习、日常购物、闲聊、看手机、打扫收拾——这些是日常生活，不是记忆事件；⑤自问：如果这件事明天就忘了，角色的人生轨迹不会有任何改变，那就不填。
 
 严格返回JSON，不含任何额外文字。`;
 
@@ -3672,7 +3672,8 @@ function buildAutoSaveData() {
             apartment: gameState.apartment,
             lastActionTime: gameState.lastActionTime,
             dailyInteractions: gameState.dailyInteractions,
-            coupleStatus: gameState.coupleStatus
+            coupleStatus: gameState.coupleStatus,
+            recentEvents: gameState.recentEvents
         },
         saveTimestamp: formatGameTime(new Date()),
         isAutoSave: true
@@ -3729,6 +3730,7 @@ function tryLoadAutoSaveOnStartup() {
         gameState.lastActionTime = loadedState.lastActionTime ? new Date(loadedState.lastActionTime) : null;
         gameState.dailyInteractions = loadedState.dailyInteractions || [];
         gameState.coupleStatus = loadedState.coupleStatus || {};
+        gameState.recentEvents = loadedState.recentEvents || [];
 
         gameState.isPaused = true;
         gameState.isProcessing = false;
@@ -3790,7 +3792,8 @@ function saveGame(slotIndex) {
             apartment: gameState.apartment,
             lastActionTime: gameState.lastActionTime,
             dailyInteractions: gameState.dailyInteractions,
-            coupleStatus: gameState.coupleStatus
+            coupleStatus: gameState.coupleStatus,
+            recentEvents: gameState.recentEvents
         },
         saveTimestamp: formatGameTime(new Date())
     };
@@ -3887,6 +3890,7 @@ function loadGame(slotIndex) {
         gameState.lastActionTime = loadedState.lastActionTime ? new Date(loadedState.lastActionTime) : null;
         gameState.dailyInteractions = loadedState.dailyInteractions || [];
         gameState.coupleStatus = loadedState.coupleStatus || {};
+        gameState.recentEvents = loadedState.recentEvents || [];
 
         // 确保 UI 按钮状态正确
         if (gameState.apiKey) {
@@ -5326,6 +5330,15 @@ function loadAutoSaveSlotToSetup(i) {
             setupPanelState.selectedPreset = null;
         }
         setupPanelState.loadedGameState = saveData.gameState ? deepClone(saveData.gameState) : null;
+        // 将存档中实际关系度覆盖 configSnapshot 的初始值（与其他读档路径保持一致）
+        if (setupPanelState.loadedGameState?.characters) {
+            (setupPanelState.currentConfig.characters || []).forEach(configChar => {
+                const savedChar = setupPanelState.loadedGameState.characters[configChar.id];
+                if (savedChar?.relationship) {
+                    configChar.initialRelationships = deepClone(savedChar.relationship);
+                }
+            });
+        }
         syncSetupRelationshipValuesFromConfig();
         renderPresetCards();
         renderCharacterEditor();
@@ -5728,6 +5741,7 @@ function startGameFromSetup() {
         gameState.lastActionTime = loadedState.lastActionTime ? new Date(loadedState.lastActionTime) : null;
         gameState.dailyInteractions = loadedState.dailyInteractions || [];
         gameState.coupleStatus = loadedState.coupleStatus || {};
+        gameState.recentEvents = loadedState.recentEvents || [];
 
         // 清除临时存档状态
         setupPanelState.loadedGameState = null;
